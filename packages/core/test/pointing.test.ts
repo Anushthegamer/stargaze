@@ -1,0 +1,480 @@
+/**
+ * Sensors, projection and the catalogue.
+ *
+ * There is no external reference for "the phone is pointed north-east and
+ * tilted up 30 degrees", so these tests pin the behaviour against physical
+ * situations you can reason about: lie the phone flat and it looks straight
+ * down; stand it upright facing north and a star due north lands dead centre;
+ * tap a pixel and get back the direction that projects onto it.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import { angularSeparation } from '../src/angles.js';
+import {
+  basisFromDeviceOrientation,
+  basisFromQuaternion,
+  directionFromHorizontal,
+  horizontalFromDirection,
+  HeadingFilter,
+} from '../src/orientation.js';
+import {
+  couldBeVisible,
+  focalLength,
+  project,
+  projectHorizontal,
+  unproject,
+  verticalFov,
+  viewConeRadius,
+} from '../src/projection.js';
+import {
+  colorFromBV,
+  countBrighterThan,
+  createHorizontalBuffer,
+  parseStarCatalog,
+  precessCatalog,
+  resolveConstellations,
+  toHorizontal,
+} from '../src/catalog.js';
+import { magneticDeclination, parseDeclinationGrid, decimalYear } from '../src/declination.js';
+import { equatorialToHorizontal } from '../src/coords.js';
+import { julianDate, localSiderealTime } from '../src/time.js';
+import { constellationsJson, declinationJson, starsJson } from './fixtures.js';
+
+const VIEWPORT = { width: 390, height: 844, horizontalFov: 66 };
+
+describe('device orientation', () => {
+  it('looks straight down when the phone lies flat on its back', () => {
+    // alpha/beta/gamma all zero is a phone face-up on a table. The rear camera
+    // is then aimed at the floor.
+    const basis = basisFromDeviceOrientation({ alpha: 0, beta: 0, gamma: 0 });
+    expect(basis.altitude).toBeCloseTo(-90, 6);
+  });
+
+  it('looks at the horizon when the phone is held upright', () => {
+    // Tilted 90 degrees forward from flat: the back of the phone now faces out
+    // horizontally, which is how you photograph a building.
+    const basis = basisFromDeviceOrientation({ alpha: 0, beta: 90, gamma: 0 });
+    expect(basis.altitude).toBeCloseTo(0, 6);
+    expect(basis.azimuth).toBeCloseTo(0, 6);
+  });
+
+  it('looks straight up when the phone is face-down', () => {
+    // The stargazing pose: screen toward the ground, camera at the zenith.
+    const basis = basisFromDeviceOrientation({ alpha: 0, beta: 180, gamma: 0 });
+    expect(basis.altitude).toBeCloseTo(90, 4);
+  });
+
+  it('turns the view with alpha', () => {
+    for (const [alpha, expected] of [
+      [0, 0],
+      [90, 270],
+      [180, 180],
+      [270, 90],
+    ] as const) {
+      const basis = basisFromDeviceOrientation({ alpha, beta: 90, gamma: 0 });
+      expect(basis.azimuth).toBeCloseTo(expected, 4);
+    }
+  });
+
+  it('applies magnetic declination to the heading', () => {
+    const magnetic = basisFromDeviceOrientation({ alpha: 0, beta: 90, gamma: 0 });
+    const corrected = basisFromDeviceOrientation({
+      alpha: 0,
+      beta: 90,
+      gamma: 0,
+      declination: 10,
+    });
+    // A magnetic bearing of 0 with 10 degrees east declination is a true
+    // bearing of 10.
+    expect(magnetic.azimuth).toBeCloseTo(0, 4);
+    expect(corrected.azimuth).toBeCloseTo(10, 4);
+  });
+
+  it('keeps the basis orthonormal', () => {
+    for (const angles of [
+      { alpha: 37, beta: 62, gamma: -18 },
+      { alpha: 200, beta: 130, gamma: 45, screenAngle: 90 },
+      { alpha: 355, beta: 5, gamma: 88, screenAngle: 270 },
+    ]) {
+      const { forward, right, up } = basisFromDeviceOrientation(angles);
+      const dot = (a: typeof forward, b: typeof forward) => a.x * b.x + a.y * b.y + a.z * b.z;
+
+      expect(Math.hypot(forward.x, forward.y, forward.z)).toBeCloseTo(1, 9);
+      expect(Math.hypot(right.x, right.y, right.z)).toBeCloseTo(1, 9);
+      expect(Math.hypot(up.x, up.y, up.z)).toBeCloseTo(1, 9);
+      expect(dot(forward, right)).toBeCloseTo(0, 9);
+      expect(dot(forward, up)).toBeCloseTo(0, 9);
+      expect(dot(right, up)).toBeCloseTo(0, 9);
+    }
+  });
+
+  it('does not move the camera when only the screen rotates', () => {
+    // Rotating the UI into landscape must not swing where the lens points.
+    const portrait = basisFromDeviceOrientation({ alpha: 45, beta: 70, gamma: 0 });
+    const landscape = basisFromDeviceOrientation({
+      alpha: 45,
+      beta: 70,
+      gamma: 0,
+      screenAngle: 90,
+    });
+
+    expect(landscape.altitude).toBeCloseTo(portrait.altitude, 9);
+    expect(landscape.azimuth).toBeCloseTo(portrait.azimuth, 9);
+    // But the screen axes must swap, or labels come out sideways.
+    expect(Math.abs(landscape.roll - portrait.roll)).toBeGreaterThan(80);
+  });
+
+  it('agrees with the quaternion path for the identity rotation', () => {
+    const euler = basisFromDeviceOrientation({ alpha: 0, beta: 0, gamma: 0 });
+    const quaternion = basisFromQuaternion({ x: 0, y: 0, z: 0, w: 1 });
+    expect(quaternion.altitude).toBeCloseTo(euler.altitude, 6);
+  });
+
+  it('round-trips a direction through horizontal coordinates', () => {
+    for (const [altitude, azimuth] of [
+      [0, 0],
+      [45, 90],
+      [-30, 200],
+      [80, 359],
+    ] as const) {
+      const back = horizontalFromDirection(directionFromHorizontal(altitude, azimuth));
+      expect(back.altitude).toBeCloseTo(altitude, 9);
+      expect(back.azimuth).toBeCloseTo(azimuth, 9);
+    }
+  });
+});
+
+describe('heading filter', () => {
+  it('takes the first reading whole', () => {
+    expect(new HeadingFilter(0.2).push(123)).toBeCloseTo(123, 9);
+  });
+
+  it('converges toward a steady reading', () => {
+    const filter = new HeadingFilter(0.3);
+    filter.push(0);
+    for (let i = 0; i < 60; i += 1) filter.push(90);
+    expect(filter.push(90)).toBeCloseTo(90, 4);
+  });
+
+  it('crosses north the short way', () => {
+    // The bug this exists to prevent: the sky spinning 358 degrees when the
+    // compass ticks from 359 to 1.
+    const filter = new HeadingFilter(0.5);
+    filter.push(359);
+    const next = filter.push(1);
+    expect(next > 359 || next < 1).toBe(true);
+    expect(Math.min(next, 360 - next)).toBeLessThan(1.5);
+  });
+
+  it('smooths jitter rather than following it', () => {
+    const filter = new HeadingFilter(0.1);
+    filter.push(100);
+    // A single wild reading must not throw the view across the sky.
+    const after = filter.push(160);
+    expect(after).toBeLessThan(110);
+  });
+});
+
+describe('projection', () => {
+  const upright = basisFromDeviceOrientation({ alpha: 0, beta: 90, gamma: 0 });
+
+  it('puts the view axis at the centre of the screen', () => {
+    const point = projectHorizontal(0, 0, upright, VIEWPORT);
+    expect(point).not.toBeNull();
+    expect(point?.x).toBeCloseTo(VIEWPORT.width / 2, 6);
+    expect(point?.y).toBeCloseTo(VIEWPORT.height / 2, 6);
+    expect(point?.angleFromCenter).toBeCloseTo(0, 6);
+  });
+
+  it('puts the field-of-view edge at the edge of the screen', () => {
+    const edge = projectHorizontal(0, VIEWPORT.horizontalFov / 2, upright, VIEWPORT);
+    expect(edge?.x).toBeCloseTo(VIEWPORT.width, 4);
+  });
+
+  it('puts higher altitudes higher up the screen', () => {
+    const low = projectHorizontal(5, 0, upright, VIEWPORT);
+    const high = projectHorizontal(20, 0, upright, VIEWPORT);
+    expect(high?.y).toBeLessThan(low?.y as number);
+  });
+
+  it('puts eastward azimuths to the right', () => {
+    const east = projectHorizontal(0, 10, upright, VIEWPORT);
+    const west = projectHorizontal(0, -10, upright, VIEWPORT);
+    expect(east?.x).toBeGreaterThan(VIEWPORT.width / 2);
+    expect(west?.x).toBeLessThan(VIEWPORT.width / 2);
+  });
+
+  it('refuses to project anything behind the camera', () => {
+    // Without this the sky behind your head smears across the screen.
+    expect(projectHorizontal(0, 180, upright, VIEWPORT)).toBeNull();
+    expect(projectHorizontal(0, 91, upright, VIEWPORT)).toBeNull();
+    expect(projectHorizontal(0, 269, upright, VIEWPORT)).toBeNull();
+    expect(projectHorizontal(-90, 0, upright, VIEWPORT)).toBeNull();
+  });
+
+  it('sends steep off-axis directions far off screen rather than nowhere', () => {
+    // 89 degrees off the view axis is still technically in front, so it
+    // projects -- to a coordinate nothing like on screen. The renderer culls
+    // these with viewConeRadius; project() stays honest about the geometry.
+    const steep = projectHorizontal(-89, 0, upright, VIEWPORT);
+    expect(steep).not.toBeNull();
+    expect(Math.abs(steep?.y as number)).toBeGreaterThan(VIEWPORT.height * 4);
+    expect(steep?.angleFromCenter).toBeCloseTo(89, 3);
+  });
+
+  it('round-trips through unproject', () => {
+    for (const [x, y] of [
+      [195, 422],
+      [40, 120],
+      [350, 700],
+    ] as const) {
+      const direction = unproject(x, y, upright, VIEWPORT);
+      const back = project(direction, upright, VIEWPORT);
+      expect(back?.x).toBeCloseTo(x, 6);
+      expect(back?.y).toBeCloseTo(y, 6);
+    }
+  });
+
+  it('derives a sensible vertical field of view', () => {
+    // Taller than wide on a phone, so the vertical field must be the larger.
+    expect(verticalFov(VIEWPORT)).toBeGreaterThan(VIEWPORT.horizontalFov);
+    expect(verticalFov(VIEWPORT)).toBeLessThan(140);
+  });
+
+  it('has a view cone that contains everything on screen', () => {
+    const radius = viewConeRadius(VIEWPORT);
+    const cosRadius = Math.cos((radius * Math.PI) / 180);
+
+    // The screen corner is exactly on the cone.
+    const corner = unproject(0, 0, upright, VIEWPORT);
+    expect(couldBeVisible(corner, upright, cosRadius - 1e-9)).toBe(true);
+
+    // Something well outside is rejected.
+    expect(couldBeVisible(directionFromHorizontal(0, 120), upright, cosRadius)).toBe(false);
+  });
+
+  it('scales the focal length with the field of view', () => {
+    // Narrower field = longer lens = more pixels per degree.
+    const wide = focalLength({ ...VIEWPORT, horizontalFov: 90 });
+    const narrow = focalLength({ ...VIEWPORT, horizontalFov: 40 });
+    expect(narrow).toBeGreaterThan(wide);
+  });
+});
+
+describe('star catalogue', () => {
+  const catalog = parseStarCatalog(starsJson);
+
+  it('loads the generated catalogue', () => {
+    // Trimmed to what a phone can photograph: around a thousand stars, not the
+    // 2,850 a dark-adapted eye would reach.
+    expect(catalog.count).toBeGreaterThan(800);
+    expect(catalog.count).toBeLessThan(1400);
+    expect(catalog.ra.length).toBe(catalog.count);
+    expect(catalog.indexOfHip.size).toBe(catalog.count);
+  });
+
+  it('is sorted brightest first', () => {
+    for (let i = 1; i < catalog.count; i += 1) {
+      expect(catalog.mag[i] as number).toBeGreaterThanOrEqual(catalog.mag[i - 1] as number);
+    }
+  });
+
+  it('has Sirius as the brightest star', () => {
+    // Sirius is HIP 32349, and nothing else in the sky comes close.
+    expect(catalog.hip[0]).toBe(32349);
+    expect(catalog.mag[0] as number).toBeLessThan(-1.4);
+  });
+
+  it('finds the cutoff index by binary search', () => {
+    for (const limit of [1.5, 3, 4, 4.5]) {
+      const count = countBrighterThan(catalog, limit);
+      expect(catalog.mag[count - 1] as number).toBeLessThanOrEqual(limit);
+      if (count < catalog.count) {
+        expect(catalog.mag[count] as number).toBeGreaterThan(limit);
+      }
+    }
+  });
+
+  it('transforms the whole catalogue consistently with the single-star path', () => {
+    const jd = julianDate(new Date('2026-02-14T18:30:00Z'));
+    const lst = localSiderealTime(jd, 77.59);
+    const latitude = 12.97;
+
+    const precessed = precessCatalog(catalog, jd);
+    const buffer = createHorizontalBuffer(catalog.count);
+    toHorizontal(precessed, lst, latitude, buffer);
+
+    for (const index of [0, 1, 17, 250, 1000, catalog.count - 1]) {
+      const single = equatorialToHorizontal(
+        precessed.ra[index] as number,
+        precessed.dec[index] as number,
+        lst,
+        latitude,
+      );
+      expect(buffer.altitude[index] as number).toBeCloseTo(single.altitude, 3);
+      expect(buffer.azimuth[index] as number).toBeCloseTo(single.azimuth, 3);
+    }
+  });
+
+  it('puts roughly half the sky above the horizon', () => {
+    const jd = julianDate(new Date('2026-02-14T18:30:00Z'));
+    const precessed = precessCatalog(catalog, jd);
+    const buffer = createHorizontalBuffer(catalog.count);
+    toHorizontal(precessed, localSiderealTime(jd, 0), 45, buffer);
+
+    let above = 0;
+    for (let i = 0; i < catalog.count; i += 1) above += buffer.visible[i] as number;
+    const fraction = above / catalog.count;
+
+    expect(fraction).toBeGreaterThan(0.3);
+    expect(fraction).toBeLessThan(0.7);
+  });
+
+  it('resolves constellation figures to catalogue indices', () => {
+    const figures = resolveConstellations(constellationsJson, catalog);
+    expect(figures.byName.length).toBe(88);
+    expect(figures.segments.length).toBeGreaterThan(1000);
+
+    // Trimming the catalogue must not break a single figure: line vertices are
+    // kept whatever their brightness, so all 88 stay whole.
+    let dropped = 0;
+    for (const constellation of constellationsJson.constellations) {
+      for (const polyline of constellation.lines) {
+        for (let i = 0; i + 1 < polyline.length; i += 1) {
+          if (
+            !catalog.indexOfHip.has(polyline[i] as number) ||
+            !catalog.indexOfHip.has(polyline[i + 1] as number)
+          ) {
+            dropped += 1;
+          }
+        }
+      }
+    }
+    expect(dropped, 'constellation segments with a missing vertex').toBe(0);
+
+    // Every index must be in range, or the renderer reads past the buffer.
+    for (const index of figures.segments) {
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(index).toBeLessThan(catalog.count);
+    }
+
+    const orion = figures.byName.find((c) => c.abbr === 'Ori');
+    // The Latin IAU name is the label; the translation rides alongside it.
+    expect(orion?.name).toBe('Orion');
+    expect(orion?.common).toBe('Hunter');
+    expect(figures.byName.find((c) => c.abbr === 'UMa')?.name).toBe('Ursa Major');
+    expect((orion?.end as number) - (orion?.start as number)).toBeGreaterThan(5);
+  });
+
+  it('colours hot stars blue and cool stars red', () => {
+    const hot = colorFromBV(-0.3); // Rigel
+    const cool = colorFromBV(1.85); // Betelgeuse
+    expect(hot.b).toBeGreaterThan(hot.r);
+    expect(cool.r).toBeGreaterThan(cool.b);
+    // And nothing outside the displayable range.
+    for (const bv of [-5, -0.4, 0, 1, 3, 10]) {
+      const c = colorFromBV(bv);
+      for (const channel of [c.r, c.g, c.b]) {
+        expect(channel).toBeGreaterThanOrEqual(0);
+        expect(channel).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+});
+
+describe('magnetic declination', () => {
+  const grid = parseDeclinationGrid(declinationJson);
+
+  it('reproduces known declinations', () => {
+    // Published values for 2025, to the nearest degree.
+    const places: [string, number, number, number][] = [
+      ['Bengaluru', 12.97, 77.59, -1.1],
+      ['Seattle', 47.61, -122.33, 15.1],
+      ['New York', 40.71, -74.01, -12.5],
+      ['Sydney', -33.87, 151.21, 12.8],
+      ['London', 51.51, -0.13, 0.9],
+    ];
+
+    for (const [name, lat, lon, expected] of places) {
+      const result = magneticDeclination(grid, lat, lon, new Date('2025-01-01T00:00:00Z'));
+      expect(result.reliable, name).toBe(true);
+      // Bilinear interpolation over a 5 degree grid costs a little accuracy;
+      // a degree is still far better than the compass that consumes it.
+      expect(Math.abs(result.degrees - expected), `${name}: ${result.degrees}`).toBeLessThan(1.2);
+    }
+  });
+
+  it('interpolates smoothly rather than stepping between cells', () => {
+    let previous = magneticDeclination(grid, 40, -74, new Date('2025-01-01T00:00:00Z')).degrees;
+    for (let lon = -74; lon <= -69; lon += 0.25) {
+      const next = magneticDeclination(grid, 40, lon, new Date('2025-01-01T00:00:00Z')).degrees;
+      expect(Math.abs(next - previous)).toBeLessThan(0.5);
+      previous = next;
+    }
+  });
+
+  it('wraps across the date line', () => {
+    const west = magneticDeclination(grid, 20, -179.9, new Date('2025-01-01T00:00:00Z'));
+    const east = magneticDeclination(grid, 20, 179.9, new Date('2025-01-01T00:00:00Z'));
+    expect(Math.abs(west.degrees - east.degrees)).toBeLessThan(0.5);
+  });
+
+  it('reports the polar regions as unreliable instead of guessing', () => {
+    expect(magneticDeclination(grid, 88, 0).reliable).toBe(false);
+    expect(magneticDeclination(grid, 88, 0).degrees).toBe(0);
+    expect(magneticDeclination(grid, -87, 30).reliable).toBe(false);
+  });
+
+  it('drifts with the secular variation', () => {
+    const now = magneticDeclination(grid, 51.5, 0, new Date('2025-01-01T00:00:00Z')).degrees;
+    const later = magneticDeclination(grid, 51.5, 0, new Date('2030-01-01T00:00:00Z')).degrees;
+    // The field really does move; a model that returns the same answer forever
+    // has silently dropped the rate term.
+    expect(Math.abs(later - now)).toBeGreaterThan(0.05);
+    expect(Math.abs(later - now)).toBeLessThan(3);
+  });
+
+  it('computes decimal years', () => {
+    expect(decimalYear(new Date('2025-01-01T00:00:00Z'))).toBeCloseTo(2025, 4);
+    expect(decimalYear(new Date('2025-07-02T12:00:00Z'))).toBeCloseTo(2025.5, 2);
+  });
+});
+
+describe('the whole chain', () => {
+  it('places a star at the centre of the screen when the phone points at it', () => {
+    // The end-to-end claim the app makes: aim the phone at a star and the
+    // marker lands on it. Every stage has to agree for this to pass.
+    const catalog = parseStarCatalog(starsJson);
+    const when = new Date('2026-02-14T18:30:00Z');
+    const jd = julianDate(when);
+    const observer = { latitude: 12.97, longitude: 77.59 };
+    const lst = localSiderealTime(jd, observer.longitude);
+
+    const precessed = precessCatalog(catalog, jd);
+    const buffer = createHorizontalBuffer(catalog.count);
+    toHorizontal(precessed, lst, observer.latitude, buffer);
+
+    // Pick a star that happens to be well up in the sky.
+    let index = -1;
+    for (let i = 0; i < catalog.count; i += 1) {
+      if ((buffer.altitude[i] as number) > 40 && (buffer.altitude[i] as number) < 60) {
+        index = i;
+        break;
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0);
+
+    const altitude = buffer.altitude[index] as number;
+    const azimuth = buffer.azimuth[index] as number;
+
+    // Aim a phone exactly at it: beta tilts up from flat, alpha turns the view.
+    const basis = basisFromDeviceOrientation({ alpha: -azimuth, beta: 90 + altitude, gamma: 0 });
+    expect(angularSeparation(basis.azimuth, basis.altitude, azimuth, altitude)).toBeLessThan(1e-6);
+
+    const point = projectHorizontal(altitude, azimuth, basis, VIEWPORT);
+    expect(point).not.toBeNull();
+    expect(point?.x).toBeCloseTo(VIEWPORT.width / 2, 3);
+    expect(point?.y).toBeCloseTo(VIEWPORT.height / 2, 3);
+  });
+});

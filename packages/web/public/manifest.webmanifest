@@ -1,0 +1,13 @@
+{
+  "name": "StarGaze",
+  "short_name": "StarGaze",
+  "description": "Point your phone at the sky and it tells you what you are looking at. Works offline.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#05070D",
+  "theme_color": "#05070D",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

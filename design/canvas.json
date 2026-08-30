@@ -1,0 +1,56 @@
+{
+  "artboards": [
+    {
+      "file": "Permissions.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "1 · Permission gate"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 520,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "2 · Sky view"
+    },
+    {
+      "file": "Selected.dc.html",
+      "x": 1040,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "3 · Object selected"
+    },
+    {
+      "file": "Settings.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "4 · Settings"
+    },
+    {
+      "file": "Tonight.dc.html",
+      "x": 2080,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "5 · Tonight"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "flow-note",
+      "x": 0,
+      "y": -150,
+      "w": 560,
+      "text": "StarGaze — sensor-driven sky AR.\nRead left to right: the gate collects GPS, clock and compass access, then every other screen is that data drawn back at you.\nAccent is a tweak (amber / cyan / white / coral) — amber is the default because it preserves dark adaptation."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

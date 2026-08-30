@@ -1,0 +1,335 @@
+/**
+ * Planets and the Sun, from JPL's approximate Keplerian elements.
+ *
+ * Each planet is treated as a body on a slowly-drifting ellipse. Solve Kepler's
+ * equation for where it is on that ellipse, subtract Earth's position to get the
+ * view from here, and rotate into equatorial coordinates.
+ *
+ * Accurate to roughly an arcminute over 1800-2050 -- about a thirtieth of the
+ * Moon's width, and far below the several degrees a phone compass contributes.
+ */
+
+import { normalize180, normalize360, toDegrees, toRadians } from './angles.js';
+import { DAYS_PER_CENTURY, J2000 } from './time.js';
+import type { Equatorial } from './coords.js';
+
+/** One set of orbital elements, or their per-century rates. */
+export interface KeplerianElements {
+  /** Semi-major axis, au. */
+  a: number;
+  /** Eccentricity. */
+  e: number;
+  /** Inclination to the ecliptic, degrees. */
+  i: number;
+  /** Mean longitude, degrees. */
+  L: number;
+  /** Longitude of perihelion, degrees. */
+  peri: number;
+  /** Longitude of the ascending node, degrees. */
+  node: number;
+}
+
+export interface PlanetEntry {
+  elements: KeplerianElements;
+  rates: KeplerianElements;
+}
+
+/** Shape of the generated `planets.json`. */
+export interface PlanetTable {
+  validFrom: number;
+  validTo: number;
+  planets: Record<string, PlanetEntry>;
+}
+
+export type PlanetName =
+  | 'Mercury'
+  | 'Venus'
+  | 'Earth'
+  | 'Mars'
+  | 'Jupiter'
+  | 'Saturn'
+  | 'Uranus'
+  | 'Neptune';
+
+/**
+ * Every body the elements cover. Used for the maths and the tests, not the UI.
+ */
+export const ALL_PLANETS: readonly PlanetName[] = [
+  'Mercury',
+  'Venus',
+  'Earth',
+  'Mars',
+  'Jupiter',
+  'Saturn',
+  'Uranus',
+  'Neptune',
+];
+
+/**
+ * The planets the app draws: the five that have been visible to people since
+ * before anyone wrote any of this down.
+ *
+ * Uranus (magnitude ~5.7) and Neptune (~7.9) are deliberately absent. Neither
+ * can be photographed with a phone from the ground, and a marker floating over
+ * a patch of sky with nothing in it is worse than no marker -- it teaches the
+ * user the overlay is unreliable, right when they are trying to decide whether
+ * to trust it.
+ *
+ * The elements for both are still in `planets.json` and still tested; this is a
+ * decision about what to show, not about what the maths can do.
+ */
+export const VISIBLE_PLANETS: readonly PlanetName[] = [
+  'Mercury',
+  'Venus',
+  'Mars',
+  'Jupiter',
+  'Saturn',
+];
+
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** Days light takes to cross one astronomical unit. */
+const LIGHT_DAYS_PER_AU = 0.005775518331;
+
+/**
+ * Obliquity of the ecliptic at J2000.0, degrees.
+ *
+ * JPL's elements are referred to the J2000 ecliptic and equinox, so this is the
+ * angle that converts them to equatorial -- NOT the obliquity of date. Using
+ * the wrong one silently mixes reference frames.
+ */
+export const OBLIQUITY_J2000 = 23.4392911;
+
+/**
+ * Mean obliquity of the ecliptic, degrees -- the tilt between the Earth's
+ * equator and its orbital plane, and the hinge every ecliptic-to-equatorial
+ * conversion turns on. IAU 1980.
+ *
+ * Used by the Moon, whose theory works in coordinates of date.
+ */
+export function meanObliquity(jd: number): number {
+  const t = (jd - J2000) / DAYS_PER_CENTURY;
+  return (
+    23.439291111 -
+    0.0130041667 * t -
+    1.6388889e-7 * t * t +
+    5.0361111e-7 * t * t * t
+  );
+}
+
+/**
+ * Solve Kepler's equation M = E - e*sin(E) for the eccentric anomaly.
+ *
+ * Newton-Raphson from a decent first guess. Planetary eccentricities are all
+ * small, so this converges in three or four passes; the loop bound is a
+ * guard against a pathological input rather than an expected cost.
+ */
+export function solveKepler(meanAnomalyDeg: number, eccentricity: number): number {
+  const m = normalize180(meanAnomalyDeg);
+  const eStar = toDegrees(eccentricity); // e expressed in degrees, per JPL's write-up
+
+  let e = m + eStar * Math.sin(toRadians(m));
+
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const eRad = toRadians(e);
+    const deltaM = m - (e - eStar * Math.sin(eRad));
+    const deltaE = deltaM / (1 - eccentricity * Math.cos(eRad));
+    e += deltaE;
+    if (Math.abs(deltaE) < 1e-9) break;
+  }
+
+  return e;
+}
+
+/** Elements for `name` propagated to `jd`. */
+function elementsAt(table: PlanetTable, name: PlanetName, jd: number): KeplerianElements {
+  const entry = table.planets[name];
+  if (!entry) throw new Error(`planets.json has no entry for ${name}`);
+
+  const t = (jd - J2000) / DAYS_PER_CENTURY;
+  const { elements, rates } = entry;
+
+  return {
+    a: elements.a + rates.a * t,
+    e: elements.e + rates.e * t,
+    i: elements.i + rates.i * t,
+    L: elements.L + rates.L * t,
+    peri: elements.peri + rates.peri * t,
+    node: elements.node + rates.node * t,
+  };
+}
+
+/**
+ * Heliocentric position in the J2000 ecliptic frame, in au.
+ */
+export function heliocentricEcliptic(
+  table: PlanetTable,
+  name: PlanetName,
+  jd: number,
+): Vec3 {
+  const { a, e, i, L, peri, node } = elementsAt(table, name, jd);
+
+  const argumentOfPerihelion = peri - node;
+  const meanAnomaly = L - peri;
+  const eccentricAnomaly = toRadians(solveKepler(meanAnomaly, e));
+
+  // Position in the orbital plane, perihelion along +x.
+  const xOrbital = a * (Math.cos(eccentricAnomaly) - e);
+  const yOrbital = a * Math.sqrt(1 - e * e) * Math.sin(eccentricAnomaly);
+
+  const w = toRadians(argumentOfPerihelion);
+  const n = toRadians(node);
+  const inc = toRadians(i);
+
+  const cosW = Math.cos(w);
+  const sinW = Math.sin(w);
+  const cosN = Math.cos(n);
+  const sinN = Math.sin(n);
+  const cosI = Math.cos(inc);
+  const sinI = Math.sin(inc);
+
+  return {
+    x: (cosW * cosN - sinW * sinN * cosI) * xOrbital + (-sinW * cosN - cosW * sinN * cosI) * yOrbital,
+    y: (cosW * sinN + sinW * cosN * cosI) * xOrbital + (-sinW * sinN + cosW * cosN * cosI) * yOrbital,
+    z: sinW * sinI * xOrbital + cosW * sinI * yOrbital,
+  };
+}
+
+/**
+ * Rotate a J2000-ecliptic vector into the J2000 equatorial frame.
+ *
+ * Everything this module returns is therefore J2000. Precess it to the equinox
+ * of date before mixing it with sidereal time -- `sky.ts` does that for stars
+ * and planets alike, so the two stay in the same frame.
+ */
+function eclipticToEquatorialJ2000(v: Vec3): Vec3 {
+  const eps = toRadians(OBLIQUITY_J2000);
+  const cosE = Math.cos(eps);
+  const sinE = Math.sin(eps);
+  return {
+    x: v.x,
+    y: cosE * v.y - sinE * v.z,
+    z: sinE * v.y + cosE * v.z,
+  };
+}
+
+/** Right ascension and declination of an equatorial vector. */
+function vectorToEquatorial(v: Vec3): Equatorial {
+  return {
+    ra: normalize360(toDegrees(Math.atan2(v.y, v.x))),
+    dec: toDegrees(Math.atan2(v.z, Math.hypot(v.x, v.y))),
+  };
+}
+
+export interface BodyPosition extends Equatorial {
+  /** Distance from the observer, au. */
+  distance: number;
+  /** Distance from the Sun, au. Zero for the Sun itself. */
+  heliocentricDistance: number;
+  /** Sun-body-Earth angle, degrees. */
+  phaseAngle: number;
+  /** Apparent visual magnitude. */
+  magnitude: number;
+}
+
+/**
+ * Geocentric position of a planet.
+ *
+ * Corrected for light time: what is seen now is where the planet was when the
+ * light left it, which for Neptune is four hours ago.
+ */
+export function planetPosition(
+  table: PlanetTable,
+  name: PlanetName,
+  jd: number,
+): BodyPosition {
+  const earth = heliocentricEcliptic(table, 'Earth', jd);
+
+  let planet = heliocentricEcliptic(table, name, jd);
+  let offset: Vec3 = { x: planet.x - earth.x, y: planet.y - earth.y, z: planet.z - earth.z };
+  let distance = Math.hypot(offset.x, offset.y, offset.z);
+
+  // One iteration is plenty: the correction to the correction is milliarcseconds.
+  planet = heliocentricEcliptic(table, name, jd - distance * LIGHT_DAYS_PER_AU);
+  offset = { x: planet.x - earth.x, y: planet.y - earth.y, z: planet.z - earth.z };
+  distance = Math.hypot(offset.x, offset.y, offset.z);
+
+  const heliocentricDistance = Math.hypot(planet.x, planet.y, planet.z);
+  const sunDistance = Math.hypot(earth.x, earth.y, earth.z);
+
+  // Law of cosines on the Sun-planet-Earth triangle.
+  const cosPhase =
+    (heliocentricDistance * heliocentricDistance + distance * distance - sunDistance * sunDistance) /
+    (2 * heliocentricDistance * distance);
+  const phaseAngle = toDegrees(Math.acos(Math.max(-1, Math.min(1, cosPhase))));
+
+  const equatorial = vectorToEquatorial(eclipticToEquatorialJ2000(offset));
+
+  return {
+    ...equatorial,
+    distance,
+    heliocentricDistance,
+    phaseAngle,
+    magnitude: planetMagnitude(name, heliocentricDistance, distance, phaseAngle),
+  };
+}
+
+/**
+ * Geocentric position of the Sun.
+ *
+ * The Sun as seen from Earth is just Earth's heliocentric position reflected
+ * through the origin -- no separate theory needed.
+ */
+export function sunPosition(table: PlanetTable, jd: number): BodyPosition {
+  const earth = heliocentricEcliptic(table, 'Earth', jd);
+  const offset: Vec3 = { x: -earth.x, y: -earth.y, z: -earth.z };
+  const distance = Math.hypot(offset.x, offset.y, offset.z);
+
+  return {
+    ...vectorToEquatorial(eclipticToEquatorialJ2000(offset)),
+    distance,
+    heliocentricDistance: 0,
+    phaseAngle: 0,
+    magnitude: -26.74,
+  };
+}
+
+/**
+ * Apparent visual magnitude, from the Astronomical Almanac's polynomials.
+ *
+ * Saturn's rings are ignored: their tilt swings its brightness by up to a
+ * magnitude, and modelling it is not worth the code for a label that reads
+ * "Saturn, bright".
+ */
+export function planetMagnitude(
+  name: PlanetName,
+  heliocentricDistance: number,
+  distance: number,
+  phaseAngle: number,
+): number {
+  const base = 5 * Math.log10(Math.max(1e-9, heliocentricDistance * distance));
+  const a = phaseAngle;
+
+  switch (name) {
+    case 'Mercury':
+      return -0.42 + base + 0.038 * a - 0.000273 * a * a + 2e-6 * a * a * a;
+    case 'Venus':
+      return -4.4 + base + 0.0009 * a + 2.39e-4 * a * a - 6.5e-7 * a * a * a;
+    case 'Mars':
+      return -1.52 + base + 0.016 * a;
+    case 'Jupiter':
+      return -9.4 + base + 0.005 * a;
+    case 'Saturn':
+      return -8.88 + base;
+    case 'Uranus':
+      return -7.19 + base;
+    case 'Neptune':
+      return -6.87 + base;
+    default:
+      return 0;
+  }
+}
