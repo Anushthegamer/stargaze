@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Replaced the stock Capacitor launcher icon and splash screen (both were
+  still the default blue bridge mark) with a real adaptive icon set and
+  matching splash images generated from `packages/web/public/icon.svg`.
+- `STORE.md`: Play Store listing copy, permission justifications, and a Data
+  Safety declaration, plus store screenshots at phone and tablet sizes.
+- Monthly CI re-verification against live sources: a fresh JPL Horizons
+  epoch (not the committed fixtures), NOAA's IGRF test values as a hard
+  gate, and upstream catalogue hash-pinning. Opens an issue on failure.
+- The magnetic declination model now carries its own expiry, and the app
+  flags the correction as stale once the device clock is past IGRF's
+  secular-variation forecast window instead of quietly extrapolating.
+
 ## [0.2.0] - 2026-08-31
 
 Accuracy corrections ordered by error magnitude, device/permission handling
