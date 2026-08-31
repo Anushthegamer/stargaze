@@ -1,6 +1,6 @@
 {
   "name": "@stargaze/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "On-device astronomy: sensors and a clock in, screen positions out. No DOM, no network.",
