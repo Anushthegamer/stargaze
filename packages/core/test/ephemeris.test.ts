@@ -16,47 +16,7 @@ import { moonPosition, moonPhaseName } from '../src/moon.js';
 import { ALL_PLANETS, planetPosition, sunPosition, VISIBLE_PLANETS } from '../src/planets.js';
 import type { PlanetName } from '../src/planets.js';
 import { arcseconds, horizons, parseUtc, planetTable } from './fixtures.js';
-
-/**
- * Per-body tolerances, in arcseconds.
- *
- * These are not guesses. JPL publishes nominal errors for this element set over
- * 1800-2050 -- 15" for Mercury, 400" for Jupiter, 600" for Saturn and so on --
- * because the outer planets are perturbing each other in ways a fixed ellipse
- * cannot express. A single tight tolerance across all eight would be asserting
- * something the model never claimed.
- *
- * Uranus and Neptune get more room than their published longitude error: JPL
- * quotes that separately from distance error, and for the far planets a
- * thousand-kilometre distance error tilts the geocentric direction too.
- *
- * The published figures already cover the whole 1800-2050 window, and error
- * grows toward its edges rather than sitting flat -- the fixture epochs reach
- * to 2045 and back to 2021 specifically to exercise that, so Mercury and
- * Uranus carry more headroom than a fit centred on 2024-2027 alone would need.
- *
- * Measured worst case at the time of writing is comfortably inside every one of
- * these, so a failure here means a regression, not a model limit.
- */
-const TOLERANCE_ARCSEC: Record<string, number> = {
-  Sun: 30,
-  Mercury: 30,
-  Venus: 30,
-  Mars: 60,
-  Jupiter: 420,
-  Saturn: 620,
-  Uranus: 130,
-  Neptune: 60,
-};
-
-/**
- * The Moon's abridged series is good to about 10 arcseconds on its own; with
- * nutation and (reduced-precision) aberration now applied, measured worst
- * case across the fixture epochs is under 14", so 25" leaves real margin
- * without hiding a regression the way the old 90" bound (needed before those
- * two corrections existed) would.
- */
-const MOON_TOLERANCE_ARCSEC = 25;
+import { TOLERANCE_ARCSEC, MOON_TOLERANCE_ARCSEC } from './tolerances.js';
 
 const asDegrees = (arcsec: number): number => arcsec / 3600;
 

@@ -73,6 +73,10 @@ export interface SkyFrame {
   /** Degrees east; add to a magnetic bearing for a true one. */
   declination: number;
   declinationReliable: boolean;
+  /** True once the device clock is past the declination model's secular-
+   *  variation validity window -- still applied (extrapolating a smooth
+   *  field a little past its window beats nothing), but worth saying so. */
+  declinationStale: boolean;
 
   catalog: StarCatalog;
   stars: HorizontalBuffer;
@@ -140,6 +144,7 @@ export class SkyModel {
       observer,
       declination: declination.degrees,
       declinationReliable: declination.reliable,
+      declinationStale: declination.stale,
       catalog: this.data.stars,
       stars: buffer,
       starCount,

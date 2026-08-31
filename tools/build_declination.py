@@ -295,6 +295,11 @@ def main() -> int:
         "model": "IGRF-14",
         "url": IGRF_URL,
         "epoch": MODEL_EPOCH,
+        # IGRF publishes a definitive model to its epoch and a 5-year secular-
+        # variation forecast beyond it -- IGRF-15 is due in 2029/2030 to cover
+        # what comes after. Past this, `rate` is extrapolating past what the
+        # model actually claims, not interpolating within it.
+        "validUntil": MODEL_EPOCH + 5.0,
         "note": (
             "Declination in degrees east of true north at sea level; total field "
             "intensity in nanotesla. Row-major, latitude outer."
@@ -319,6 +324,14 @@ def main() -> int:
         payload,
         note=f"{lat_count}x{LON_COUNT} grid ({len(decl):,} cells)",
     )
+
+    # A model that fails its own published-value check should not ship
+    # quietly -- this is what makes that check a gate rather than a note in
+    # the log nobody reads. Matters most in CI (see verify-sources.yml),
+    # where the whole point is catching this without a human watching.
+    if worst > TEST_TOLERANCE_DEG:
+        log(f"  FAILING build: {worst:.3f} deg exceeds the {TEST_TOLERANCE_DEG} deg tolerance")
+        return 1
     return 0
 
 

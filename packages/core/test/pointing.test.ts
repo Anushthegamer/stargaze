@@ -535,6 +535,38 @@ describe('magnetic declination', () => {
     expect(magneticDeclination(grid, -87, 30).reliable).toBe(false);
   });
 
+  it('flags itself stale once the device clock is past the model validity window', () => {
+    expect(grid.validUntil).toBeDefined();
+
+    const withinWindow = magneticDeclination(grid, 51.5, 0, new Date('2026-01-01T00:00:00Z'));
+    expect(withinWindow.stale).toBe(false);
+
+    const pastWindow = magneticDeclination(
+      grid,
+      51.5,
+      0,
+      new Date(`${Math.ceil(grid.validUntil as number) + 1}-06-01T00:00:00Z`),
+    );
+    expect(pastWindow.stale).toBe(true);
+    // Staleness is a time check, not a location one -- a stale result still
+    // carries a (extrapolated) number rather than silently zeroing out.
+    expect(pastWindow.reliable).toBe(true);
+    expect(pastWindow.degrees).not.toBe(0);
+  });
+
+  it('does not confuse "stale" with "unreliable" -- they are independent', () => {
+    const farFuturePole = magneticDeclination(
+      grid,
+      88,
+      0,
+      new Date(`${Math.ceil((grid.validUntil as number) + 5)}-01-01T00:00:00Z`),
+    );
+    // Outside the grid AND past the validity window: both flags fire, neither
+    // masks the other.
+    expect(farFuturePole.reliable).toBe(false);
+    expect(farFuturePole.stale).toBe(true);
+  });
+
   it('drifts with the secular variation', () => {
     const now = magneticDeclination(grid, 51.5, 0, new Date('2025-01-01T00:00:00Z')).degrees;
     const later = magneticDeclination(grid, 51.5, 0, new Date('2030-01-01T00:00:00Z')).degrees;

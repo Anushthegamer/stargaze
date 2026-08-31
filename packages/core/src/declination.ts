@@ -29,6 +29,11 @@ export interface DeclinationGridJson {
   /** Total field strength, nanotesla, at the model epoch. Absent from older
    *  catalogue builds. */
   intensity?: number[];
+  /** Decimal year the secular-variation forecast (`rate`) is good until --
+   *  IGRF publishes a new model every 5 years. Past this, the correction is
+   *  extrapolating beyond what the model actually claims. Absent from older
+   *  catalogue builds, in which case staleness is never flagged. */
+  validUntil?: number;
 }
 
 export interface DeclinationGrid extends Omit<DeclinationGridJson, 'decl' | 'rate' | 'intensity'> {
@@ -64,13 +69,23 @@ export interface DeclinationResult {
    * uncorrected heading rather than a wrong one.
    */
   reliable: boolean;
+  /**
+   * True once `when` is past the model's secular-variation validity window
+   * (grid.validUntil) -- the correction is still returned (extrapolating a
+   * smooth field a little past its window is better than nothing), but the
+   * caller should say so rather than presenting it as current. Always false
+   * if the catalogue build didn't emit validUntil.
+   */
+  stale: boolean;
 }
 
 /**
  * Declination at a position and time, bilinearly interpolated.
  *
  * Longitude wraps; latitude does not, so the caller gets told when it has
- * walked off the top of the grid.
+ * walked off the top of the grid. Independently, the caller gets told when
+ * `when` has walked off the end of the model's validity window -- a
+ * different kind of unreliable, so it isn't folded into the same flag.
  */
 export function magneticDeclination(
   grid: DeclinationGrid,
@@ -78,8 +93,10 @@ export function magneticDeclination(
   longitude: number,
   when: Date = new Date(),
 ): DeclinationResult {
+  const stale = grid.validUntil !== undefined && decimalYear(when) > grid.validUntil;
+
   if (latitude < grid.latMin || latitude > grid.latMax) {
-    return { degrees: 0, reliable: false };
+    return { degrees: 0, reliable: false, stale };
   }
 
   // Fractional grid position.
@@ -118,7 +135,7 @@ export function magneticDeclination(
   const perYear = interpolate(grid.rate);
   const years = decimalYear(when) - grid.epoch;
 
-  return { degrees: normalize180(base + perYear * years), reliable: true };
+  return { degrees: normalize180(base + perYear * years), reliable: true, stale };
 }
 
 export interface FieldIntensityResult {

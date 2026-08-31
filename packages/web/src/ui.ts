@@ -459,11 +459,18 @@ export function buildShell(root: HTMLElement): Shell {
       const declPill = pick('decl-pill');
       if (frame.declinationReliable) {
         pick('decl').textContent = `${frame.declination > 0 ? '+' : ''}${frame.declination.toFixed(1)}°`;
-        declPill.classList.remove('warn');
+        declPill.classList.toggle('warn', frame.declinationStale);
+        declPill.setAttribute(
+          'title',
+          frame.declinationStale
+            ? 'This device’s clock is past the magnetic model’s forecast window -- the correction shown is extrapolated, not current.'
+            : '',
+        );
       } else {
         // Say so rather than showing a zero that looks like a measurement.
         pick('decl').textContent = 'n/a';
         declPill.classList.add('warn');
+        declPill.setAttribute('title', '');
       }
 
       drawCompass(compassSvg, basis.azimuth, mode);

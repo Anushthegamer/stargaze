@@ -25,13 +25,13 @@ python tools/build_stars.py
 
 | File | Size (gzip) | Contents |
 |---|---|---|
-| `stars.json` | 14 KB | 1,009 stars to magnitude 4.5 — parallel arrays, brightest first |
+| `stars.json` | 19 KB | 1,009 stars to magnitude 4.5 — parallel arrays incl. proper motion, brightest first |
 | `names.json` | 13 KB | 929 designations, 291 proper names, distances |
 | `constellations.json` | 5 KB | 88 IAU figures, 843 segments, as HIP polylines |
 | `planets.json` | 1 KB | Keplerian elements + per-century rates for 8 planets |
-| `declination.json` | 11 KB | 35×72 magnetic declination grid + yearly rate |
+| `declination.json` | 19 KB | 35×72 grid: declination + yearly rate + total field intensity |
 
-**44 KB gzipped for the entire photographable sky.** Small enough that the
+**~57 KB gzipped for the entire photographable sky.** Small enough that the
 service worker precaches all of it without thinking about it.
 
 ## Sources
@@ -94,3 +94,26 @@ The grid stops at ±85° latitude: declination changes far too fast near the
 magnetic poles for bilinear interpolation to mean anything, and a compass is
 useless there regardless. The client should fall back to an uncorrected heading
 with a warning outside that band.
+
+Also emits `validUntil` (the model epoch plus 5 years, IGRF's own
+secular-variation forecast window). The client checks the device clock
+against it and flags the correction as stale rather than quietly
+extrapolating past the window the model actually claims.
+
+## Keeping the data honest over time
+
+Fixtures and coefficient files verify a moment in time; sources move and
+models expire. Two things run in CI on a schedule (`.github/workflows/
+verify-sources.yml`, monthly) rather than only once at commit time:
+
+- `packages/core/test/live-verify.test.ts` re-checks the ephemeris against a
+  **fresh** JPL Horizons epoch (today, not a committed fixture date) — set
+  `LIVE_VERIFY=1` to run it locally. Skipped by default so `npm test` stays
+  offline.
+- `check_catalogue_hashes.py` fetches the HYG and Stellarium sources fresh
+  (bypassing `tools/.cache/`) and compares their hashes against
+  `tools/source-hashes.json`. A changed hash doesn't fail the app — it means
+  the committed catalogue was built from an older copy of the source and is
+  worth reviewing and rebuilding (`npm run data`).
+
+Both open a GitHub issue on failure instead of failing silently.
