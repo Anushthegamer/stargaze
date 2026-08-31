@@ -19,6 +19,7 @@
 export * from './angles.js';
 export * from './time.js';
 export * from './coords.js';
+export * from './apparent.js';
 export * from './catalog.js';
 export * from './planets.js';
 export * from './moon.js';

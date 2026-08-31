@@ -8,7 +8,9 @@
  */
 
 import { toDegrees, toRadians } from './angles.js';
-import { precessFromJ2000 } from './coords.js';
+import { apparentTerms, applyApparentPlace } from './apparent.js';
+import { precessFromJ2000, refraction } from './coords.js';
+import { J2000, terrestrialJulianDate } from './time.js';
 
 /** The generated `stars.json`, as it arrives from the network. */
 export interface StarCatalogJson {
@@ -20,6 +22,11 @@ export interface StarCatalogJson {
   dec: number[];
   mag: number[];
   ci: number[];
+  /** Proper motion, mas/yr, J2000 epoch. `pmra` is already times cos(dec) --
+   *  the standard astrometric convention. Absent from older catalogue builds,
+   *  in which case it's treated as all zero (no motion applied). */
+  pmra?: number[];
+  pmdec?: number[];
 }
 
 /** Catalogue positions, J2000. Sorted brightest first. */
@@ -33,6 +40,10 @@ export interface StarCatalog {
   mag: Float32Array;
   /** B-V colour index. */
   ci: Float32Array;
+  /** Proper motion in RA, mas/yr, times cos(dec). */
+  pmra: Float32Array;
+  /** Proper motion in Dec, mas/yr. */
+  pmdec: Float32Array;
   /** HIP number to array index, for constellation lookup. */
   indexOfHip: Map<number, number>;
 }
@@ -50,6 +61,8 @@ export function parseStarCatalog(json: StarCatalogJson): StarCatalog {
     dec: Float64Array.from(json.dec),
     mag: Float32Array.from(json.mag),
     ci: Float32Array.from(json.ci),
+    pmra: json.pmra ? Float32Array.from(json.pmra) : new Float32Array(count),
+    pmdec: json.pmdec ? Float32Array.from(json.pmdec) : new Float32Array(count),
     indexOfHip,
   };
 }
@@ -79,20 +92,68 @@ export interface PrecessedCatalog {
   jd: number;
 }
 
+/** Julian days in a Julian year -- the unit proper motion rates are quoted in. */
+const DAYS_PER_YEAR = 365.25;
+
+/** milliarcseconds to degrees. */
+const MAS_TO_DEG = 1 / 3600000;
+
+/**
+ * Move a J2000 catalogue position by proper motion to `jd`, in the star's own
+ * fixed (ICRS) frame -- this has to happen before precession, which then
+ * carries the whole frame to the equinox of date. Getting the order backwards
+ * mixes a frame rotation into a straight-line motion and is wrong by a small
+ * but real amount for anything with real proper motion.
+ *
+ * `pmra` is already times cos(dec) (the standard convention), so it has to be
+ * divided back out to get the actual change in right ascension.
+ */
+function applyProperMotion(
+  ra: number,
+  dec: number,
+  pmraMasYr: number,
+  pmdecMasYr: number,
+  jd: number,
+): { ra: number; dec: number } {
+  if (pmraMasYr === 0 && pmdecMasYr === 0) return { ra, dec };
+
+  const years = (jd - J2000) / DAYS_PER_YEAR;
+  const decRad = toRadians(dec);
+  const movedDec = dec + pmdecMasYr * MAS_TO_DEG * years;
+  const movedRa = ra + (pmraMasYr * MAS_TO_DEG * years) / Math.cos(decRad);
+
+  return { ra: movedRa, dec: movedDec };
+}
+
 /**
  * Precess the whole catalogue once.
  *
  * Precession moves stars by well under an arcsecond a day, so this belongs at
- * load time (or at most once a session), never in the frame loop.
+ * load time (or at most once a session), never in the frame loop. Proper
+ * motion, nutation and annual aberration are folded into the same pass, since
+ * all four only need recomputing on the same cadence -- see
+ * {@link applyProperMotion} and {@link applyApparentPlace}. Nutation and
+ * aberration's shared per-instant terms are hoisted out of the per-star loop,
+ * the same way {@link toHorizontal} hoists the trigonometry that does not
+ * depend on the individual star.
  */
 export function precessCatalog(catalog: StarCatalog, jd: number): PrecessedCatalog {
   const ra = new Float64Array(catalog.count);
   const dec = new Float64Array(catalog.count);
+  const terms = apparentTerms(terrestrialJulianDate(jd));
 
   for (let i = 0; i < catalog.count; i += 1) {
-    const moved = precessFromJ2000(catalog.ra[i] as number, catalog.dec[i] as number, jd);
-    ra[i] = moved.ra;
-    dec[i] = moved.dec;
+    const moved = applyProperMotion(
+      catalog.ra[i] as number,
+      catalog.dec[i] as number,
+      catalog.pmra[i] as number,
+      catalog.pmdec[i] as number,
+      jd,
+    );
+    const precessed = precessFromJ2000(moved.ra, moved.dec, jd);
+    const apparent = applyApparentPlace(precessed.ra, precessed.dec, terms);
+    ra[i] = apparent.ra;
+    dec[i] = apparent.dec;
   }
 
   return { count: catalog.count, ra, dec, jd };
@@ -124,7 +185,9 @@ export function createHorizontalBuffer(count: number): HorizontalBuffer {
  * each star costs one sin, one cos and an atan2 rather than six.
  *
  * `limit` lets the caller transform only the brightest N -- see
- * {@link countBrighterThan}.
+ * {@link countBrighterThan}. `refract` adds atmospheric refraction to the
+ * altitude (see {@link refraction}) -- on by default, since that is what is
+ * actually visible; turn it off for a true (airless) altitude.
  */
 export function toHorizontal(
   precessed: PrecessedCatalog,
@@ -132,6 +195,7 @@ export function toHorizontal(
   latitude: number,
   out: HorizontalBuffer,
   limit: number = precessed.count,
+  refract: boolean = true,
 ): void {
   const latRad = toRadians(latitude);
   const sinLat = Math.sin(latRad);
@@ -151,7 +215,8 @@ export function toHorizontal(
     const cosH = Math.cos(hourAngle);
 
     const sinAlt = sinDec * sinLat + cosDec * cosLat * cosH;
-    const altitude = toDegrees(Math.asin(sinAlt < -1 ? -1 : sinAlt > 1 ? 1 : sinAlt));
+    let altitude = toDegrees(Math.asin(sinAlt < -1 ? -1 : sinAlt > 1 ? 1 : sinAlt));
+    if (refract) altitude += refraction(altitude);
 
     let azimuth = toDegrees(
       Math.atan2(-cosDec * sinH, sinDec * cosLat - cosDec * sinLat * cosH),

@@ -52,6 +52,8 @@ class Star(NamedTuple):
     flamsteed: str      # Flamsteed number, or ""
     con: str            # IAU 3-letter constellation abbreviation, or ""
     dist_pc: float      # distance in parsecs (0.0 when unknown)
+    pmra_masyr: float   # proper motion in RA, mas/yr, times cos(dec) (0.0 when unknown)
+    pmdec_masyr: float  # proper motion in Dec, mas/yr (0.0 when unknown)
 
 
 def _float(value: str, default: float = 0.0) -> float:
@@ -100,6 +102,8 @@ def iter_hyg() -> Iterator[Star]:
             flamsteed=row.get("flam", "").strip(),
             con=row.get("con", "").strip(),
             dist_pc=_float(row.get("dist", "")),
+            pmra_masyr=_float(row.get("pmra", "")),
+            pmdec_masyr=_float(row.get("pmdec", "")),
         )
 
 

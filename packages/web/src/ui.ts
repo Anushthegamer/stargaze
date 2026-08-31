@@ -67,6 +67,7 @@ export interface Shell {
   linesToggle: HTMLButtonElement;
   labelsToggle: HTMLButtonElement;
   horizonToggle: HTMLButtonElement;
+  refractionToggle: HTMLButtonElement;
   offsetMinus: HTMLButtonElement;
   offsetPlus: HTMLButtonElement;
   offsetValue: HTMLElement;
@@ -227,6 +228,13 @@ export function buildShell(root: HTMLElement): Shell {
               <button class="iconbtn" id="off-plus" type="button" style="border:1px solid var(--hair);font-size:19px">+</button>
             </div>
           </div>
+          <div class="row">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <b style="font-size:14.5px;font-weight:500">Atmospheric refraction</b>
+              <span class="help">The air lifts everything near the horizon by up to half a degree. Off shows the true position instead.</span>
+            </div>
+            <button class="switch" id="t-refraction" type="button" aria-pressed="true"></button>
+          </div>
         </div>
 
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
@@ -359,6 +367,7 @@ export function buildShell(root: HTMLElement): Shell {
     linesToggle: pick<HTMLButtonElement>('t-lines'),
     labelsToggle: pick<HTMLButtonElement>('t-labels'),
     horizonToggle: pick<HTMLButtonElement>('t-horizon'),
+    refractionToggle: pick<HTMLButtonElement>('t-refraction'),
     offsetMinus: pick<HTMLButtonElement>('off-minus'),
     offsetPlus: pick<HTMLButtonElement>('off-plus'),
     offsetValue: pick('off-value'),

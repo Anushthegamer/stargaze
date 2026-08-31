@@ -7,6 +7,10 @@
  */
 
 import {
+  applyRefraction,
+  apparentTerms,
+  applyApparentPlace,
+  applyDiurnalParallax,
   countBrighterThan,
   createHorizontalBuffer,
   equatorialToHorizontal,
@@ -20,6 +24,7 @@ import {
   riseTransitSet,
   RISE_SET_ALTITUDE,
   sunPosition,
+  terrestrialJulianDate,
   toHorizontal,
   VISIBLE_PLANETS,
   type HorizontalBuffer,
@@ -89,7 +94,12 @@ export class SkyModel {
     this.buffer = createHorizontalBuffer(data.stars.count);
   }
 
-  compute(when: Date, observer: Position, magnitudeLimit: number): SkyFrame {
+  compute(
+    when: Date,
+    observer: Position,
+    magnitudeLimit: number,
+    refract: boolean = true,
+  ): SkyFrame {
     const jd = julianDate(when);
     const lst = localSiderealTime(jd, observer.longitude);
 
@@ -101,7 +111,7 @@ export class SkyModel {
     }
 
     const starCount = countBrighterThan(this.data.stars, magnitudeLimit);
-    toHorizontal(this.precessed, lst, observer.latitude, this.buffer, starCount);
+    toHorizontal(this.precessed, lst, observer.latitude, this.buffer, starCount, refract);
 
     const declination = magneticDeclination(
       this.data.declination,
@@ -110,7 +120,7 @@ export class SkyModel {
       when,
     );
 
-    const objects = this.computeObjects(jd, lst, observer);
+    const objects = this.computeObjects(jd, lst, observer, refract);
 
     const buffer = this.buffer;
     return {
@@ -139,13 +149,29 @@ export class SkyModel {
     };
   }
 
-  private computeObjects(jd: number, lst: number, observer: Position): SkyObject[] {
+  private computeObjects(
+    jd: number,
+    lst: number,
+    observer: Position,
+    refract: boolean,
+  ): SkyObject[] {
     const objects: SkyObject[] = [];
 
+    // The Moon and planet theories are functions of Terrestrial Time; the
+    // clock only gives UT. Sidereal time (lst) stays on the plain jd -- see
+    // terrestrialJulianDate's doc comment.
+    const ttJd = terrestrialJulianDate(jd);
+
+    // Nutation and aberration's shared per-instant terms, computed once and
+    // reused for the Moon, Sun and every planet below.
+    const terms = apparentTerms(ttJd);
+
     // The Moon first: it is the brightest thing after the Sun and the one worth
-    // aiming at to check the overlay is aligned.
-    const moon = moonPosition(jd, observer, lst);
-    const moonHorizontal = equatorialToHorizontal(moon.ra, moon.dec, lst, observer.latitude);
+    // aiming at to check the overlay is aligned. moonPosition already returns
+    // the apparent place (nutation and aberration included) -- see moon.ts.
+    const moon = moonPosition(ttJd, observer, lst);
+    let moonHorizontal = equatorialToHorizontal(moon.ra, moon.dec, lst, observer.latitude);
+    if (refract) moonHorizontal = applyRefraction(moonHorizontal);
     objects.push({
       name: 'Moon',
       kind: 'moon',
@@ -162,21 +188,24 @@ export class SkyModel {
       phase: moon.phase,
     });
 
-    const sun = sunPosition(this.data.planets, jd);
+    const sun = sunPosition(this.data.planets, ttJd);
     // The Sun's catalogue position is J2000; the stars are precessed to date,
     // so this has to be too or the two disagree by a third of a degree.
     const sunOfDate = precessFromJ2000(sun.ra, sun.dec, jd);
-    const sunHorizontal = equatorialToHorizontal(
-      sunOfDate.ra,
-      sunOfDate.dec,
+    const sunApparent = applyApparentPlace(sunOfDate.ra, sunOfDate.dec, terms);
+    let sunHorizontal = equatorialToHorizontal(
+      sunApparent.ra,
+      sunApparent.dec,
       lst,
       observer.latitude,
     );
+    sunHorizontal = applyDiurnalParallax(sunHorizontal, sun.distance);
+    if (refract) sunHorizontal = applyRefraction(sunHorizontal);
     objects.push({
       name: 'Sun',
       kind: 'sun',
-      ra: sunOfDate.ra,
-      dec: sunOfDate.dec,
+      ra: sunApparent.ra,
+      dec: sunApparent.dec,
       altitude: sunHorizontal.altitude,
       azimuth: sunHorizontal.azimuth,
       magnitude: sun.magnitude,
@@ -186,15 +215,18 @@ export class SkyModel {
     });
 
     for (const name of VISIBLE_PLANETS) {
-      const planet = planetPosition(this.data.planets, name, jd);
+      const planet = planetPosition(this.data.planets, name, ttJd);
       const ofDate = precessFromJ2000(planet.ra, planet.dec, jd);
-      const horizontal = equatorialToHorizontal(ofDate.ra, ofDate.dec, lst, observer.latitude);
+      const apparent = applyApparentPlace(ofDate.ra, ofDate.dec, terms);
+      let horizontal = equatorialToHorizontal(apparent.ra, apparent.dec, lst, observer.latitude);
+      horizontal = applyDiurnalParallax(horizontal, planet.distance);
+      if (refract) horizontal = applyRefraction(horizontal);
 
       objects.push({
         name,
         kind: 'planet',
-        ra: ofDate.ra,
-        dec: ofDate.dec,
+        ra: apparent.ra,
+        dec: apparent.dec,
         altitude: horizontal.altitude,
         azimuth: horizontal.azimuth,
         magnitude: planet.magnitude,

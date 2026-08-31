@@ -39,13 +39,18 @@ BODIES = {
 
 MOON = "301"
 
-# Spread across the seasons and across a few years, so a term that only matters
-# at one point in an orbit cannot hide.
+# Spread across the seasons and across two decades, so a term that only
+# matters at one point in an orbit -- or only shows up decades from the
+# original four dates -- cannot hide. The range stays inside 1800-2050, where
+# JPL's element set is valid; going further would be testing extrapolation
+# the model never claimed to support.
 EPOCHS = [
+    "2021-11-02 08:20",
     "2024-03-15 22:00",
     "2025-06-21 03:30",
     "2026-01-08 19:45",
     "2027-09-30 11:15",
+    "2045-07-14 15:50",
 ]
 
 # An arbitrary but real observing site, for the Moon's topocentric test.

@@ -61,6 +61,10 @@ def main() -> int:
         "dec": [rounded(s.dec_deg, 4) for s in stars],
         "mag": [rounded(s.mag, 2) for s in stars],
         "ci": [rounded(s.ci, 2) for s in stars],
+        # Proper motion, mas/yr, J2000 epoch -- pmra is already times cos(dec),
+        # the standard astrometric convention HYG and Gaia both use.
+        "pmra": [rounded(s.pmra_masyr, 1) for s in stars],
+        "pmdec": [rounded(s.pmdec_masyr, 1) for s in stars],
     }
     write_json("stars.json", payload, note=f"{len(stars):,} stars, {forced} below the cutoff kept for constellation lines")
 

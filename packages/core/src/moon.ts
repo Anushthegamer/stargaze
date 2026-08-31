@@ -13,6 +13,7 @@
  */
 
 import { normalize360, toDegrees, toRadians } from './angles.js';
+import { apparentTerms, applyApparentPlace } from './apparent.js';
 import { DAYS_PER_CENTURY, J2000 } from './time.js';
 import { meanObliquity } from './planets.js';
 import type { Equatorial, Observer } from './coords.js';
@@ -312,6 +313,15 @@ export function moonPosition(
   let dec = toDegrees(
     Math.asin(sinBeta * Math.cos(eps) + cosBeta * Math.sin(eps) * sinLambda),
   );
+
+  // Nutation and aberration take the mean place of date to the apparent
+  // place -- the same correction the Sun and planets get in the web client's
+  // rendering path, applied here instead because this is where it can be
+  // checked against Horizons' own apparent coordinates (see ephemeris.test.ts).
+  const apparent = applyApparentPlace(ra, dec, apparentTerms(jd));
+  ra = apparent.ra;
+  dec = apparent.dec;
+
   let observerDistance = distance;
 
   if (observer && lst !== undefined) {

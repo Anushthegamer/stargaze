@@ -173,6 +173,38 @@ export function applyRefraction(position: Horizontal): Horizontal {
   };
 }
 
+/** Astronomical units per Earth radius (149,597,870.7 km / 6378.14 km). */
+const EARTH_RADII_PER_AU = 23454.78;
+
+/**
+ * Diurnal (topocentric) parallax in altitude, degrees, to SUBTRACT from a
+ * geocentric altitude.
+ *
+ * An observer standing on the surface is displaced from the Earth's centre by
+ * up to one Earth radius, which shifts a nearby body's apparent altitude
+ * downward -- the opposite direction from refraction, and much smaller except
+ * for the Moon (which gets the full 3D correction in moon.ts instead; this is
+ * the lighter version, adequate at planetary distances). Venus at closest
+ * approach (about 0.28 au) is displaced by up to 31", which is the largest
+ * case among the planets.
+ *
+ * Ignores Earth's flattening and the observer's exact position on the disc,
+ * both well under an arcsecond here -- the full correction the Moon needs
+ * would be spending real code on an effect ten times smaller than the compass.
+ */
+export function diurnalParallax(distanceAu: number, altitude: number): number {
+  const sinP = Math.cos(toRadians(altitude)) / (distanceAu * EARTH_RADII_PER_AU);
+  return toDegrees(Math.asin(Math.max(-1, Math.min(1, sinP))));
+}
+
+/** Apply {@link diurnalParallax} to a horizontal position. */
+export function applyDiurnalParallax(position: Horizontal, distanceAu: number): Horizontal {
+  return {
+    altitude: position.altitude - diurnalParallax(distanceAu, position.altitude),
+    azimuth: position.azimuth,
+  };
+}
+
 /** Standard altitude at which a body counts as risen or set. */
 export const RISE_SET_ALTITUDE = {
   /** Stars and planets: refraction alone. */

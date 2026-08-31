@@ -12,13 +12,24 @@ import { describe, expect, it } from 'vitest';
 
 import { angularSeparation, normalize180, normalize360, angularDelta } from '../src/angles.js';
 import {
+  applyDiurnalParallax,
+  diurnalParallax,
   equatorialToHorizontal,
   horizontalToEquatorial,
   precessFromJ2000,
   refraction,
   riseTransitSet,
 } from '../src/coords.js';
-import { greenwichMeanSiderealTime, julianDate, localSiderealTime, J2000 } from '../src/time.js';
+import {
+  deltaT,
+  greenwichMeanSiderealTime,
+  julianDate,
+  localSiderealTime,
+  terrestrialJulianDate,
+  J2000,
+} from '../src/time.js';
+import { moonPosition } from '../src/moon.js';
+import { apparentTerms, applyApparentPlace } from '../src/apparent.js';
 
 // Polaris, J2000.
 const POLARIS = { ra: 37.9529, dec: 89.2641 };
@@ -68,6 +79,92 @@ describe('sidereal time', () => {
   it('shifts with longitude, one hour per 15 degrees', () => {
     const jd = julianDate(new Date('2026-03-01T00:00:00Z'));
     expect(normalize360(localSiderealTime(jd, 15) - localSiderealTime(jd, 0))).toBeCloseTo(15, 9);
+  });
+});
+
+describe('Delta-T', () => {
+  it('sits in the range published for the current era', () => {
+    // IERS bulletins put TT-UT around 69 seconds through the mid-2020s.
+    const jd = julianDate(new Date('2025-06-01T00:00:00Z'));
+    expect(deltaT(jd)).toBeGreaterThan(60);
+    expect(deltaT(jd)).toBeLessThan(90);
+  });
+
+  it('advances the Julian Date by a fraction of a day, not a whole one', () => {
+    const jd = julianDate(new Date('2026-01-01T00:00:00Z'));
+    const tt = terrestrialJulianDate(jd);
+    expect(tt).toBeGreaterThan(jd);
+    expect(tt - jd).toBeLessThan(1 / 1000); // well under a day; it's ~70 seconds
+  });
+
+  it('holds the polynomial steady outside its fitted range rather than extrapolating', () => {
+    const early = julianDate(new Date('1990-01-01T00:00:00Z'));
+    const stillEarly = julianDate(new Date('1995-01-01T00:00:00Z'));
+    // Both clamp to the 2005 endpoint, so they read the same.
+    expect(deltaT(early)).toBeCloseTo(deltaT(stillEarly), 6);
+
+    const late = julianDate(new Date('2090-01-01T00:00:00Z'));
+    const laterStill = julianDate(new Date('2099-01-01T00:00:00Z'));
+    expect(deltaT(late)).toBeCloseTo(deltaT(laterStill), 6);
+  });
+
+  it('measurably moves the Moon, in the direction time moving forward implies', () => {
+    // The Moon runs about 0.55"/s of time; 69s of Delta-T should shift it by
+    // roughly 30-45 arcseconds -- not zero, and not degrees.
+    const jd = julianDate(new Date('2026-01-08T19:45:00Z'));
+    const withoutDeltaT = moonPosition(jd);
+    const withDeltaT = moonPosition(terrestrialJulianDate(jd));
+
+    const shiftDeg = Math.hypot(
+      (withDeltaT.ra - withoutDeltaT.ra) * Math.cos((withDeltaT.dec * Math.PI) / 180),
+      withDeltaT.dec - withoutDeltaT.dec,
+    );
+    const shiftArcsec = shiftDeg * 3600;
+    expect(shiftArcsec).toBeGreaterThan(15);
+    expect(shiftArcsec).toBeLessThan(60);
+  });
+});
+
+describe('nutation and aberration', () => {
+  it('keeps nutation within its published bound', () => {
+    // The principal term alone is at most 17.2" in longitude, 9.2" in
+    // obliquity -- checked across a span longer than the ~18.6-year period
+    // the argument (Omega) cycles on, so every phase gets sampled.
+    for (let year = 2015; year <= 2035; year += 1) {
+      const jd = julianDate(new Date(`${year}-01-01T00:00:00Z`));
+      const terms = apparentTerms(jd);
+      expect(Math.abs(terms.deltaPsi) * 3600).toBeLessThanOrEqual(17.2 + 1e-6);
+      expect(Math.abs(terms.deltaEpsilon) * 3600).toBeLessThanOrEqual(9.2 + 1e-6);
+    }
+  });
+
+  it('reaches close to its published bound somewhere in an 18.6-year cycle', () => {
+    // Confirms the term is actually oscillating rather than pinned near zero.
+    let maxPsi = 0;
+    for (let months = 0; months < 18.6 * 12; months += 1) {
+      const jd = julianDate(new Date(2020, months, 1));
+      maxPsi = Math.max(maxPsi, Math.abs(apparentTerms(jd).deltaPsi) * 3600);
+    }
+    expect(maxPsi).toBeGreaterThan(15);
+  });
+
+  it('keeps the combined nutation+aberration shift within a safe ceiling, away from the poles', () => {
+    // Worst case if nutation (17.2" + 9.2") and aberration (20.5") somehow all
+    // pointed the same way would be under 47". A real unit or sign bug (radians
+    // read as degrees, a dropped cosine) blows past this by orders of
+    // magnitude, which is what this actually guards against -- it is not
+    // trying to pin down the exact geometric maximum.
+    const jd = julianDate(new Date('2026-03-20T00:00:00Z')); // near the equinox
+    const terms = apparentTerms(jd);
+
+    for (const ra of [0, 45, 90, 135, 180, 225, 270, 315]) {
+      for (const dec of [-60, -30, 0, 30, 60]) {
+        const shifted = applyApparentPlace(ra, dec, terms);
+        const shiftArcsec = angularSeparation(ra, dec, shifted.ra, shifted.dec) * 3600;
+        expect(shiftArcsec).toBeLessThan(47);
+        expect(shiftArcsec).toBeGreaterThan(0.01); // it did something
+      }
+    }
   });
 });
 
@@ -162,6 +259,33 @@ describe('refraction', () => {
     expect(refraction(45)).toBeLessThan(0.02);
     expect(refraction(90)).toBeLessThan(0.001);
     expect(refraction(10)).toBeGreaterThan(refraction(30));
+  });
+});
+
+describe('diurnal parallax', () => {
+  it('matches Venus at closest approach, the largest planetary case', () => {
+    // About 0.28 au at inferior conjunction; the published figure for this
+    // case is around 30".
+    const arcsec = diurnalParallax(0.28, 0) * 3600;
+    expect(arcsec).toBeGreaterThan(28);
+    expect(arcsec).toBeLessThan(33);
+  });
+
+  it('is negligible at planetary distances beyond Venus, and at the zenith', () => {
+    // Jupiter, even at its closest (~4.2 au), is a couple of arcseconds --
+    // real, but an order of magnitude under Venus's worst case.
+    expect(diurnalParallax(4.2, 0) * 3600).toBeLessThan(2.5);
+    // Straight overhead, the observer's displacement from the Earth's centre
+    // does not change the direction at all.
+    expect(diurnalParallax(0.28, 90)).toBeCloseTo(0, 6);
+  });
+
+  it('always lowers the altitude, never raises it', () => {
+    for (const alt of [-5, 0, 20, 45, 89]) {
+      const shifted = applyDiurnalParallax({ altitude: alt, azimuth: 123 }, 0.5);
+      expect(shifted.altitude).toBeLessThanOrEqual(alt);
+      expect(shifted.azimuth).toBe(123);
+    }
   });
 });
 

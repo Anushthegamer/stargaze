@@ -35,10 +35,12 @@ import {
   precessCatalog,
   resolveConstellations,
   toHorizontal,
+  type StarCatalog,
 } from '../src/catalog.js';
 import { magneticDeclination, parseDeclinationGrid, decimalYear } from '../src/declination.js';
-import { equatorialToHorizontal } from '../src/coords.js';
-import { julianDate, localSiderealTime } from '../src/time.js';
+import { equatorialToHorizontal, precessFromJ2000, refraction } from '../src/coords.js';
+import { apparentTerms, applyApparentPlace } from '../src/apparent.js';
+import { julianDate, localSiderealTime, terrestrialJulianDate } from '../src/time.js';
 import { constellationsJson, declinationJson, starsJson } from './fixtures.js';
 
 const VIEWPORT = { width: 390, height: 844, horizontalFov: 66 };
@@ -303,7 +305,9 @@ describe('star catalogue', () => {
 
     const precessed = precessCatalog(catalog, jd);
     const buffer = createHorizontalBuffer(catalog.count);
-    toHorizontal(precessed, lst, latitude, buffer);
+    // Refraction off: this test is about the bulk loop agreeing with the
+    // single-star transform, not about the atmosphere.
+    toHorizontal(precessed, lst, latitude, buffer, precessed.count, false);
 
     for (const index of [0, 1, 17, 250, 1000, catalog.count - 1]) {
       const single = equatorialToHorizontal(
@@ -314,6 +318,106 @@ describe('star catalogue', () => {
       );
       expect(buffer.altitude[index] as number).toBeCloseTo(single.altitude, 3);
       expect(buffer.azimuth[index] as number).toBeCloseTo(single.azimuth, 3);
+    }
+  });
+
+  it('moves a fast-proper-motion star by roughly the expected amount, isolated from everything else', () => {
+    // HIP 19849 (40 Eridani / o2 Eridani) -- one of the fastest-moving naked-
+    // eye stars, about 4.09"/yr. Over ~26 years since J2000 that is on the
+    // order of 100". Precession moves every star by much more than that over
+    // the same span (~0.36 degree, well over 1000"), and nutation/aberration
+    // add tens more on top -- so the comparison runs the identical
+    // precession+apparent-place pipeline with and without proper motion,
+    // which cancels everything except proper motion's own contribution.
+    const index = catalog.indexOfHip.get(19849);
+    expect(index).toBeDefined();
+    const i = index as number;
+    expect(catalog.pmra[i]).not.toBe(0);
+
+    const jd = julianDate(new Date('2026-01-01T00:00:00Z'));
+    const terms = apparentTerms(terrestrialJulianDate(jd));
+
+    const precessionOnly = precessFromJ2000(catalog.ra[i] as number, catalog.dec[i] as number, jd);
+    const withoutPM = applyApparentPlace(precessionOnly.ra, precessionOnly.dec, terms);
+    const withPM = precessCatalog(catalog, jd);
+
+    const pmContributionArcsec =
+      angularSeparation(
+        withoutPM.ra,
+        withoutPM.dec,
+        withPM.ra[i] as number,
+        withPM.dec[i] as number,
+      ) * 3600;
+
+    expect(pmContributionArcsec).toBeGreaterThan(60);
+    expect(pmContributionArcsec).toBeLessThan(200);
+  });
+
+  it('leaves a star with no proper motion to precession, nutation and aberration alone', () => {
+    // A hand-built single-star catalogue, rather than searching the real data
+    // for a literal (0, 0) entry -- real HYG measurements essentially always
+    // carry some nonzero value, however small.
+    const noMotion: StarCatalog = {
+      count: 1,
+      hip: Int32Array.from([1]),
+      ra: Float64Array.from([88.7929]), // Betelgeuse, for a plausible position
+      dec: Float64Array.from([7.407]),
+      mag: Float32Array.from([0.5]),
+      ci: Float32Array.from([1.85]),
+      pmra: Float32Array.from([0]),
+      pmdec: Float32Array.from([0]),
+      indexOfHip: new Map([[1, 0]]),
+    };
+
+    const jd = julianDate(new Date('2026-01-01T00:00:00Z'));
+    const terms = apparentTerms(terrestrialJulianDate(jd));
+    const precessed = precessFromJ2000(noMotion.ra[0] as number, noMotion.dec[0] as number, jd);
+    const direct = applyApparentPlace(precessed.ra, precessed.dec, terms);
+    const viaCatalog = precessCatalog(noMotion, jd);
+
+    expect(viaCatalog.ra[0]).toBeCloseTo(direct.ra, 6);
+    expect(viaCatalog.dec[0]).toBeCloseTo(direct.dec, 6);
+  });
+
+  it('lifts stars near the horizon by refraction, and can be told not to', () => {
+    const jd = julianDate(new Date('2026-02-14T18:30:00Z'));
+    const lst = localSiderealTime(jd, 77.59);
+    const latitude = 12.97;
+    const precessed = precessCatalog(catalog, jd);
+
+    const refracted = createHorizontalBuffer(catalog.count);
+    toHorizontal(precessed, lst, latitude, refracted);
+    const bare = createHorizontalBuffer(catalog.count);
+    toHorizontal(precessed, lst, latitude, bare, catalog.count, false);
+
+    // Find a star sitting close to the horizon, where the effect is largest.
+    let index = -1;
+    for (let i = 0; i < catalog.count; i += 1) {
+      const alt = bare.altitude[i] as number;
+      if (alt > -1 && alt < 3) {
+        index = i;
+        break;
+      }
+    }
+    expect(index).toBeGreaterThanOrEqual(0);
+
+    const trueAltitude = bare.altitude[index] as number;
+    const lift = (refracted.altitude[index] as number) - trueAltitude;
+    expect(lift).toBeCloseTo(refraction(trueAltitude), 5);
+    expect(lift).toBeGreaterThan(0.1);
+
+    // High overhead the correction is negligible either way.
+    let overhead = -1;
+    for (let i = 0; i < catalog.count; i += 1) {
+      if ((bare.altitude[i] as number) > 80) {
+        overhead = i;
+        break;
+      }
+    }
+    if (overhead >= 0) {
+      expect(
+        Math.abs((refracted.altitude[overhead] as number) - (bare.altitude[overhead] as number)),
+      ).toBeLessThan(0.01);
     }
   });
 

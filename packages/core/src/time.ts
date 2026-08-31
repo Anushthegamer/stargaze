@@ -75,3 +75,35 @@ export function localSiderealTime(jd: number, longitudeDeg: number): number {
 export function localSiderealTimeAt(when: Date, longitudeDeg: number): number {
   return localSiderealTime(julianDate(when), longitudeDeg);
 }
+
+/**
+ * Delta-T: Terrestrial Time minus UT, in seconds.
+ *
+ * Ephemeris theories (the Moon and planets here) are functions of TT, but the
+ * only clock available is UTC -- currently about 69 seconds behind. That is
+ * negligible for the planets, which barely move in a minute, but the Moon
+ * covers about 0.55 arcseconds per second of time, so skipping this costs it
+ * roughly half an arcminute.
+ *
+ * Espenak & Meeus's polynomial, valid 2005-2050. Delta-T is not predictable
+ * far ahead -- it depends on the Earth's actual, slightly irregular rotation
+ * -- so outside that range the year is clamped to the nearest end rather than
+ * extrapolating the polynomial into territory it was never fit to.
+ */
+export function deltaT(jd: number): number {
+  const year = 2000 + (jd - J2000) / 365.25;
+  const t = Math.max(2005, Math.min(2050, year)) - 2000;
+  return 62.92 + 0.32217 * t + 0.005589 * t * t;
+}
+
+/**
+ * Terrestrial Time Julian Date, for feeding to the Moon and planet theories.
+ *
+ * Sidereal time stays on the plain (UT-based) Julian Date from
+ * {@link julianDate} -- it is an Earth-rotation-angle quantity, not an
+ * ephemeris one, and applying Delta-T there would be the wrong correction in
+ * the wrong place.
+ */
+export function terrestrialJulianDate(jd: number): number {
+  return jd + deltaT(jd) / 86400;
+}

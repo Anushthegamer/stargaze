@@ -56,6 +56,10 @@ interface Settings {
   showLabels: boolean;
   showHorizon: boolean;
   northOffset: number;
+  /** Atmospheric refraction lifts everything near the horizon by up to half a
+   *  degree -- on by default, since that is what is actually visible. Off
+   *  gives the true (airless) altitude. */
+  refraction: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -65,6 +69,7 @@ const DEFAULTS: Settings = {
   showLabels: true,
   showHorizon: true,
   northOffset: 0,
+  refraction: true,
 };
 
 function loadSettings(): Settings {
@@ -534,6 +539,16 @@ class StarGaze {
       });
     }
 
+    // Unlike the display toggles above, refraction changes the computed
+    // altitude itself, so it needs a recompute rather than just a redraw.
+    s.refractionToggle.setAttribute('aria-pressed', String(this.settings.refraction));
+    s.refractionToggle.addEventListener('click', () => {
+      this.settings.refraction = !this.settings.refraction;
+      s.refractionToggle.setAttribute('aria-pressed', String(this.settings.refraction));
+      saveSettings(this.settings);
+      this.updateSky(true);
+    });
+
     for (const [button, delta] of [
       [s.offsetMinus, -0.5],
       [s.offsetPlus, 0.5],
@@ -603,7 +618,12 @@ class StarGaze {
     const now = performance.now();
     if (!force && now - this.lastSkyUpdate < 1000) return;
     this.lastSkyUpdate = now;
-    this.frame = this.model.compute(this.now(), this.observer, this.settings.magnitudeLimit);
+    this.frame = this.model.compute(
+      this.now(),
+      this.observer,
+      this.settings.magnitudeLimit,
+      this.settings.refraction,
+    );
   }
 
   private currentBasis(): CameraBasis {

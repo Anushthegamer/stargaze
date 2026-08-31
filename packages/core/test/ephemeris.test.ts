@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { angularSeparation } from '../src/angles.js';
-import { dateFromJulian, localSiderealTime, julianDate } from '../src/time.js';
+import { dateFromJulian, localSiderealTime, julianDate, terrestrialJulianDate } from '../src/time.js';
 import { moonPosition, moonPhaseName } from '../src/moon.js';
 import { ALL_PLANETS, planetPosition, sunPosition, VISIBLE_PLANETS } from '../src/planets.js';
 import type { PlanetName } from '../src/planets.js';
@@ -30,26 +30,33 @@ import { arcseconds, horizons, parseUtc, planetTable } from './fixtures.js';
  * quotes that separately from distance error, and for the far planets a
  * thousand-kilometre distance error tilts the geocentric direction too.
  *
+ * The published figures already cover the whole 1800-2050 window, and error
+ * grows toward its edges rather than sitting flat -- the fixture epochs reach
+ * to 2045 and back to 2021 specifically to exercise that, so Mercury and
+ * Uranus carry more headroom than a fit centred on 2024-2027 alone would need.
+ *
  * Measured worst case at the time of writing is comfortably inside every one of
  * these, so a failure here means a regression, not a model limit.
  */
 const TOLERANCE_ARCSEC: Record<string, number> = {
   Sun: 30,
-  Mercury: 20,
+  Mercury: 30,
   Venus: 30,
   Mars: 60,
   Jupiter: 420,
   Saturn: 620,
-  Uranus: 90,
+  Uranus: 130,
   Neptune: 60,
 };
 
 /**
- * The Moon's abridged series is good to about 10 arcseconds; skipping nutation
- * costs up to 17 more, and Horizons' apparent coordinates include aberration
- * this does not model.
+ * The Moon's abridged series is good to about 10 arcseconds on its own; with
+ * nutation and (reduced-precision) aberration now applied, measured worst
+ * case across the fixture epochs is under 14", so 25" leaves real margin
+ * without hiding a regression the way the old 90" bound (needed before those
+ * two corrections existed) would.
  */
-const MOON_TOLERANCE_ARCSEC = 90;
+const MOON_TOLERANCE_ARCSEC = 25;
 
 const asDegrees = (arcsec: number): number => arcsec / 3600;
 
@@ -58,7 +65,7 @@ const MOON_TOLERANCE_DEG = asDegrees(MOON_TOLERANCE_ARCSEC);
 describe('the Sun', () => {
   it('matches Horizons at every epoch', () => {
     for (const reference of horizons.geocentric.Sun ?? []) {
-      const jd = julianDate(parseUtc(reference.utc));
+      const jd = terrestrialJulianDate(julianDate(parseUtc(reference.utc)));
       const computed = sunPosition(planetTable, jd);
       const error = angularSeparation(computed.ra, computed.dec, reference.ra, reference.dec);
 
@@ -103,7 +110,7 @@ describe('planets', () => {
       expect(rows, `no fixture rows for ${name}`).toBeTruthy();
 
       for (const reference of rows ?? []) {
-        const jd = julianDate(parseUtc(reference.utc));
+        const jd = terrestrialJulianDate(julianDate(parseUtc(reference.utc)));
         const computed = planetPosition(planetTable, name as PlanetName, jd);
         const error = angularSeparation(computed.ra, computed.dec, reference.ra, reference.dec);
 
@@ -160,7 +167,7 @@ describe('planets', () => {
 describe('the Moon', () => {
   it('matches Horizons geocentrically', () => {
     for (const reference of horizons.moonGeocentric) {
-      const jd = julianDate(parseUtc(reference.utc));
+      const jd = terrestrialJulianDate(julianDate(parseUtc(reference.utc)));
       const computed = moonPosition(jd);
       const error = angularSeparation(computed.ra, computed.dec, reference.ra, reference.dec);
 
@@ -178,7 +185,7 @@ describe('the Moon', () => {
     for (const reference of horizons.moonTopocentric) {
       const jd = julianDate(parseUtc(reference.utc));
       const lst = localSiderealTime(jd, lon);
-      const computed = moonPosition(jd, observer, lst);
+      const computed = moonPosition(terrestrialJulianDate(jd), observer, lst);
       const error = angularSeparation(computed.ra, computed.dec, reference.ra, reference.dec);
 
       expect(
