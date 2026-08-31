@@ -36,11 +36,6 @@ export function dateFromJulian(jd: number): Date {
   return new Date((jd - JD_UNIX_EPOCH) * MS_PER_DAY);
 }
 
-/** Julian centuries elapsed since J2000.0. */
-export function julianCenturies(jd: number): number {
-  return (jd - J2000) / DAYS_PER_CENTURY;
-}
-
 /**
  * Greenwich Mean Sidereal Time in degrees.
  *
