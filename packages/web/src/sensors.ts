@@ -14,6 +14,8 @@
  * machine with no magnetometer.
  */
 
+import { isNative, nativePosition, requestNativeCamera, requestNativeLocation } from './native.js';
+
 export type PermissionState = 'unknown' | 'granted' | 'denied' | 'unsupported';
 
 export interface OrientationSample {
@@ -47,6 +49,14 @@ export const DEFAULT_POSITION: Position = {
 };
 
 export async function requestPosition(): Promise<Position | null> {
+  // On Android the runtime permission has to be granted before the API will
+  // answer, and the plugin path fails fast where the WebView's own can hang.
+  if (isNative()) {
+    if ((await requestNativeLocation()) === 'denied') return null;
+    const fromPlugin = await nativePosition();
+    if (fromPlugin) return fromPlugin;
+  }
+
   if (!('geolocation' in navigator)) return null;
 
   return new Promise((resolve) => {
@@ -191,6 +201,12 @@ export async function requestCamera(): Promise<CameraResult> {
     return { stream: null, state: 'unsupported', fov: null };
   }
 
+  // Android grants camera access to the app, not to the page. Without this,
+  // getUserMedia rejects with no prompt having ever appeared.
+  if (isNative() && (await requestNativeCamera()) === 'denied') {
+    return { stream: null, state: 'denied', fov: null };
+  }
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -239,5 +255,8 @@ export function isSecureContextForSensors(): boolean {
   // Camera, geolocation and motion all require a secure context. On a LAN this
   // is the thing that quietly breaks: http://192.168.x.x fails with no error
   // that points at the cause.
+  //
+  // Inside Capacitor the WebView serves from https://localhost, so this is
+  // always satisfied -- which is one of the better reasons to ship the wrapper.
   return window.isSecureContext;
 }

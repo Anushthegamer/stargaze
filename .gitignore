@@ -6,6 +6,9 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# Locally minted TLS certificates
+server/.cert/
+
 # Node
 node_modules/
 dist/
@@ -13,6 +16,9 @@ dist/
 *.log
 
 # Capacitor / Android
+# The android/ project is committed; its build output and the copy of the web
+# bundle that `cap sync` drops into it are not.
+android/app/src/main/assets/public/
 android/app/build/
 android/build/
 android/.gradle/

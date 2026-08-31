@@ -32,7 +32,17 @@ import {
   type Position,
 } from './sensors.js';
 import { SkyRenderer, type RenderOptions } from './render.js';
-import { describe, SkyModel, tonight, type SkyFrame } from './sky.js';
+import {
+  calibrate,
+  calibrationTargets,
+  describe,
+  search,
+  SkyModel,
+  skyCaption,
+  tonight,
+  type SkyFrame,
+  type TonightEntry,
+} from './sky.js';
 import { buildShell, type Shell } from './ui.js';
 
 /* ------------------------------------------------------------------ *
@@ -112,6 +122,9 @@ class StarGaze {
 
   private lastSkyUpdate = 0;
   private timeOffsetMs = 0;
+
+  /** The object being sighted during compass calibration, if any. */
+  private calibrationTarget: TonightEntry | null = null;
 
   async start(root: HTMLElement): Promise<void> {
     this.shell = buildShell(root);
@@ -350,24 +363,114 @@ class StarGaze {
   private wireNav(): void {
     this.shell.tonightButton.addEventListener('click', () => {
       if (!this.frame) return;
-      this.shell.openTonight(tonight(this.frame, this.data), (entry) => {
-        this.selected = entry.index;
-        this.shell.closeSheets();
-        // Point the view at it, so "where is Jupiter" is answered by the app
-        // turning to face it rather than by the user hunting.
-        if (this.mode === 'manual') {
-          this.lookAltitude = entry.altitude;
-          this.lookAzimuth = entry.azimuth;
-        }
-        this.showCard();
-      });
+      const entries = tonight(this.frame, this.data);
+      this.shell.openTonight(entries, skyCaption(this.frame, entries.length), (entry) =>
+        this.goTo(entry),
+      );
+    });
+
+    this.shell.searchButton.addEventListener('click', () => {
+      this.shell.openSearch(
+        (query) => (this.frame ? search(query, this.frame, this.data) : []),
+        (entry) => this.goTo(entry),
+      );
     });
 
     this.shell.settingsButton.addEventListener('click', () => this.shell.openSettings());
+    this.wireCalibration();
     this.shell.modeButton.addEventListener('click', () => void this.toggleMode());
     this.shell.cardClose.addEventListener('click', () => {
       this.selected = null;
       this.shell.closeCard();
+    });
+  }
+
+  /**
+   * Select an object and aim at it.
+   *
+   * In drag mode the view turns to face it, which is the whole answer to "where
+   * is Jupiter". With sensors that would fight the phone, so instead the object
+   * is selected and the user swings the phone until the marker appears.
+   */
+  private goTo(entry: TonightEntry): void {
+    this.selected = entry.index;
+    this.shell.closeSheets();
+
+    if (this.mode === 'manual') {
+      this.lookAltitude = entry.altitude;
+      this.lookAzimuth = entry.azimuth;
+    } else {
+      const turn = ((entry.azimuth - this.currentBasis().azimuth + 540) % 360) - 180;
+      const direction = turn > 0 ? 'right' : 'left';
+      this.shell.toast(
+        entry.altitude > 0
+          ? `${entry.label} is ${Math.abs(turn).toFixed(0)}° to your ${direction}, ${entry.altitude.toFixed(0)}° up.`
+          : `${entry.label} is below the horizon right now.`,
+        4200,
+      );
+    }
+
+    this.showCard();
+  }
+
+  private wireCalibration(): void {
+    const shell = this.shell;
+
+    shell.calibrateButton.addEventListener('click', () => {
+      if (!this.frame) return;
+      this.calibrationTarget = null;
+      shell.openCalibrate(
+        calibrationTargets(this.frame, this.data),
+        (entry) => {
+          this.calibrationTarget = entry;
+          shell.calibrateConfirm.disabled = false;
+          shell.setCalibrationStatus(
+            `Put the crosshair on ${entry.label} — ${entry.altitude.toFixed(0)}° up, bearing ${entry.azimuth.toFixed(0)}° — hold still, then confirm.`,
+          );
+        },
+        this.settings.northOffset,
+      );
+    });
+
+    shell.calibrateConfirm.addEventListener('click', () => {
+      const target = this.calibrationTarget;
+      if (!target) return;
+
+      if (this.mode !== 'sensors') {
+        // In drag mode the heading is whatever the user dragged it to, so a
+        // sighting would measure nothing but their own aim.
+        shell.setCalibrationStatus(
+          'Calibration needs the phone’s own compass. Switch to sensor mode first.',
+        );
+        return;
+      }
+
+      // Measure against the raw sensor heading, with the existing correction
+      // removed, or each calibration would be relative to the last one.
+      const raw = this.currentBasis().azimuth - this.settings.northOffset;
+      const result = calibrate(raw, target);
+
+      this.settings.northOffset = Number(result.offset.toFixed(1));
+      saveSettings(this.settings);
+      shell.offsetValue.textContent = `${this.settings.northOffset > 0 ? '+' : ''}${this.settings.northOffset.toFixed(1)}°`;
+
+      shell.setCalibrationStatus(
+        `Corrected by ${result.offset > 0 ? '+' : ''}${result.offset.toFixed(1)}°. ` +
+          `The compass read ${result.reported.toFixed(1)}°; ${target.label} is at ${result.actual.toFixed(1)}°.`,
+      );
+      shell.toast(
+        `Compass corrected by ${result.offset > 0 ? '+' : ''}${result.offset.toFixed(1)}°.`,
+        3600,
+      );
+    });
+
+    shell.calibrateReset.addEventListener('click', () => {
+      this.settings.northOffset = 0;
+      this.calibrationTarget = null;
+      saveSettings(this.settings);
+      shell.offsetValue.textContent = '0.0°';
+      shell.calibrateConfirm.disabled = true;
+      shell.setCalibrationStatus('Correction cleared. Choose a target to redo it.');
     });
   }
 

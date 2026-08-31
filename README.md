@@ -24,8 +24,8 @@ against a star catalogue: cheap, exact, and 60fps on a budget phone.
 | `tools/` — Python data pipeline | done |
 | `packages/core` — astronomy, verified against JPL | done, 78 tests |
 | `packages/web` — camera AR client | done |
-| `server/` — HTTPS host for LAN testing | **not started** |
-| `android/` — Capacitor wrapper | **not started** |
+| `server/` — HTTPS host for LAN testing | done |
+| `android/` — Capacitor wrapper | done, APK builds |
 
 ```bash
 npm install && npm run data && npm run dev
@@ -35,25 +35,70 @@ The client runs at `http://localhost:5173`. It opens on the permission gate;
 **Skip — just show me the sky** goes straight to drag mode, which needs no
 sensors and is how this is developed.
 
+## Testing on a phone
+
+The trap worth knowing about: camera, geolocation and motion are all gated
+behind a **secure context**. `http://192.168.1.42:5173` is not one, and the
+failure is silent — no error, no permission prompt, just a page that never asks
+for anything. Both device paths avoid it.
+
+**Over the network**, with a self-signed certificate:
+
+```bash
+npm run serve
+```
+
+Prints every address the machine answers on. The phone warns about the
+certificate once; accept it and the sensors start working. `npm run dev:https`
+does the same for the dev server, with hot reload.
+
+**As an app**, which sidesteps the whole problem — the WebView serves from
+`https://localhost`, so it is a secure context by construction:
+
+```bash
+npm run android:open
+```
+
+## Building the Android app
+
+```bash
+npm run android:sync    # build the web bundle and copy it into android/
+npm run android:open    # ...and open Android Studio
+```
+
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk` (8.9 MB, with the
+entire sky inside it).
+
+**You will need a JDK 21.** Android Studio bundles JDK 25, and Gradle 8.14
+refuses to run on it — `unsupported class file major version 69`. Capacitor
+pins AGP 8.x, which pins Gradle 8.x, so upgrading Gradle is not the way out.
+Point `JAVA_HOME` at a JDK 21 before building:
+
+```bash
+JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug
+```
+
+The emulator needs a system image installed from Android Studio's SDK manager,
+and is worth treating as a smoke test only: **emulators fake the magnetometer**,
+so the compass — the one genuinely uncertain part of this — can only be judged
+on a real phone.
+
 ## Not done yet
 
 Listed here rather than left implied, so nothing looks finished that isn't.
 
-- **HTTPS on the LAN.** Camera, geolocation and motion are all blocked outside a
-  secure context, so `http://192.168.x.x:5173` silently fails on a phone — no
-  error that points at the cause. Testing on a real device needs a self-signed
-  cert first. This is the next thing to build.
-- **The Android wrapper.** Capacitor project, the three permissions in the
-  manifest, and a Kotlin `TYPE_ROTATION_VECTOR` plugin if the WebView's
-  orientation proves too coarse. `orientation.ts` already accepts a quaternion,
-  so that plugin drops in behind the existing interface.
-- **Star-alignment calibration.** Point at a bright star, tap it, solve for the
-  residual compass offset. The compass is off by 5–15° and everything else here
-  is accurate to arcseconds, so this is the single highest-value feature left.
-  The manual `northOffset` stepper in settings is the stopgap.
-- **Search.** The design has a search field; only the Tonight list is built.
+- **A native rotation-vector plugin.** The WebView's `DeviceOrientation` is used
+  for now. If it proves too coarse on real hardware, Android's
+  `TYPE_ROTATION_VECTOR` fuses gyroscope, accelerometer and magnetometer in
+  hardware and is steadier. `basisFromQuaternion` in `orientation.ts` already
+  accepts exactly what that sensor produces, so the plugin drops in behind the
+  existing interface without touching anything else.
+- **Nothing has run on real hardware yet.** Everything here is verified against
+  JPL and against physical facts, but the compass is the one part that can only
+  be judged in the field.
 - Rise/set for the Moon assumes a fixed position across the day, so its times
   are good to a few minutes rather than seconds.
+- No deep-sky objects, and Saturn's rings are not modelled.
 
 ## Layout
 
@@ -63,7 +108,7 @@ tools/       Build-time Python: catalogues in, JSON out. Never runs in the app.
 packages/
   core/      On-device astronomy. No DOM, no network, no state. Shared by both clients.
   web/       Vite PWA client. public/data/ holds the generated catalogues.
-server/      Express, serves the built client over HTTPS on the LAN.
+server/      Express + a self-signed cert, for testing on a real phone.
 android/     Capacitor project wrapping the same web build.
 ```
 
@@ -170,14 +215,14 @@ target for checking the overlay is aligned.
 
 - **The compass is the weak link**, by a wide margin. Phone magnetometers are
   good to ±5–15°, worse near metal, speakers or a car. Everything else here is
-  accurate to arcseconds. A "point at a bright star and tap it" calibration
-  would fix most of it and is the highest-value feature not yet built.
+  accurate to arcseconds. Settings → *Calibrate on a known star* corrects for it:
+  aim at something you can see, confirm, and the difference between where the
+  sensors claim you are pointing and where that object actually is becomes a
+  stored offset.
 - Magnetic declination is interpolated on a 5° grid and stops at ±85°
   latitude, where declination changes too fast to interpolate and a compass is
   useless anyway. Outside that band the app reports the correction as
   unreliable rather than guessing.
-- No deep-sky objects.
-- Saturn's rings are not modelled, so its brightness can be a magnitude off.
 
 ## Credits
 

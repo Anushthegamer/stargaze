@@ -54,6 +54,8 @@ export interface SkyObject {
 
 export interface SkyFrame {
   when: Date;
+  /** Altitude of the Sun, degrees. Negative means night. */
+  sunAltitude: number;
   jd: number;
   lst: number;
   observer: Position;
@@ -113,6 +115,7 @@ export class SkyModel {
     const buffer = this.buffer;
     return {
       when,
+      sunAltitude: objects.find((object) => object.kind === 'sun')?.altitude ?? -90,
       jd,
       lst,
       observer,
@@ -266,6 +269,21 @@ export function tonight(frame: SkyFrame, data: SkyData, limit = 30): TonightEntr
   return entries.slice(0, limit);
 }
 
+/**
+ * A line explaining what the list is showing.
+ *
+ * Everything in it is genuinely above the horizon, but in daylight almost none
+ * of it can be seen. Saying so is more honest than filtering the list and
+ * leaving the user to wonder where everything went.
+ */
+export function skyCaption(frame: SkyFrame, count: number): string {
+  const visible = `${count} above the horizon`;
+  if (frame.sunAltitude > 0) return `${visible} · daylight, so almost none are visible`;
+  if (frame.sunAltitude > -6) return `${visible} · twilight, only the brightest will show`;
+  if (frame.sunAltitude > -18) return `${visible} · the sky is not fully dark yet`;
+  return `${visible} · dark sky`;
+}
+
 export interface ObjectDetail {
   title: string;
   subtitle: string;
@@ -373,4 +391,199 @@ function constellationName(abbr: string, data: SkyData): string {
   const found = data.figures.byName.find((c) => c.abbr === abbr);
   if (!found) return abbr;
   return found.common ? `${found.name} · the ${found.common}` : found.name;
+}
+
+/* ------------------------------------------------------------------ *
+ * Search
+ * ------------------------------------------------------------------ */
+
+/**
+ * Find objects by name.
+ *
+ * Returns the same shape as {@link tonight} so both lists share one renderer
+ * and one selection path.
+ *
+ * Three kinds of thing match:
+ *
+ *   - the Moon, the Sun and the five planets, by name
+ *   - stars with a proper name, or a Bayer/Flamsteed designation
+ *   - constellations, which resolve to their brightest visible member, because
+ *     "where is Orion" is answered by pointing at Betelgeuse, not at a centroid
+ *     in empty sky
+ *
+ * Below-the-horizon matches are kept and marked. Hiding them answers "where is
+ * Jupiter" with silence, when the useful answer is "under your feet right now".
+ */
+export function search(
+  query: string,
+  frame: SkyFrame,
+  data: SkyData,
+  limit = 24,
+): TonightEntry[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length < 1) return [];
+
+  interface Scored {
+    entry: TonightEntry;
+    score: number;
+  }
+  const found: Scored[] = [];
+
+  // Prefix matches beat substring matches, and short names beat long ones, so
+  // "mar" finds Mars before Markab.
+  const rank = (haystack: string): number => {
+    const hay = haystack.toLowerCase();
+    if (hay === needle) return 0;
+    if (hay.startsWith(needle)) return 1 + hay.length / 100;
+    if (hay.includes(needle)) return 3 + hay.length / 100;
+    return Number.POSITIVE_INFINITY;
+  };
+
+  const horizonNote = (altitude: number, base: string): string =>
+    altitude > 0 ? base : `${base} · below the horizon`;
+
+  frame.objects.forEach((object, index) => {
+    const score = rank(object.name);
+    if (!Number.isFinite(score)) return;
+    found.push({
+      score,
+      entry: {
+        label: object.name,
+        detail: horizonNote(
+          object.altitude,
+          object.kind === 'moon' ? 'Moon' : object.kind === 'sun' ? 'Sun' : 'Planet',
+        ),
+        magnitude: object.magnitude,
+        altitude: object.altitude,
+        azimuth: object.azimuth,
+        index: -1 - index,
+        kind: object.kind,
+      },
+    });
+  });
+
+  for (let i = 0; i < frame.starCount; i += 1) {
+    const hip = frame.catalog.hip[i] as number;
+    const name = data.names.get(hip);
+    if (!name) continue;
+
+    const candidates = [
+      name.proper,
+      name.bayer && name.constellation ? `${name.bayer} ${name.constellation}` : undefined,
+      name.flamsteed && name.constellation ? `${name.flamsteed} ${name.constellation}` : undefined,
+    ].filter((value): value is string => Boolean(value));
+
+    let best = Number.POSITIVE_INFINITY;
+    for (const candidate of candidates) best = Math.min(best, rank(candidate));
+    if (!Number.isFinite(best)) continue;
+
+    found.push({
+      score: best,
+      entry: {
+        label: starLabel(hip, data.names),
+        detail: horizonNote(
+          frame.stars.altitude[i] as number,
+          name.constellation ? `Star · ${name.constellation}` : 'Star',
+        ),
+        magnitude: frame.catalog.mag[i] as number,
+        altitude: frame.stars.altitude[i] as number,
+        azimuth: frame.stars.azimuth[i] as number,
+        index: i,
+        kind: 'star',
+      },
+    });
+  }
+
+  // Constellations resolve to their brightest member.
+  for (const constellation of data.figures.byName) {
+    const score = Math.min(
+      rank(constellation.name),
+      constellation.common ? rank(constellation.common) : Number.POSITIVE_INFINITY,
+      rank(constellation.abbr),
+    );
+    if (!Number.isFinite(score)) continue;
+
+    let brightest = -1;
+    for (let s = constellation.start; s < constellation.end; s += 1) {
+      for (const vertex of [
+        data.figures.segments[s * 2] as number,
+        data.figures.segments[s * 2 + 1] as number,
+      ]) {
+        if (vertex >= frame.starCount) continue;
+        if (brightest === -1 || (frame.catalog.mag[vertex] as number) < (frame.catalog.mag[brightest] as number)) {
+          brightest = vertex;
+        }
+      }
+    }
+    if (brightest === -1) continue;
+
+    found.push({
+      // Slightly behind an equally-good star match: someone typing a star name
+      // wants the star.
+      score: score + 0.5,
+      entry: {
+        label: constellation.name,
+        detail: horizonNote(
+          frame.stars.altitude[brightest] as number,
+          constellation.common ? `Constellation · the ${constellation.common}` : 'Constellation',
+        ),
+        magnitude: frame.catalog.mag[brightest] as number,
+        altitude: frame.stars.altitude[brightest] as number,
+        azimuth: frame.stars.azimuth[brightest] as number,
+        index: brightest,
+        kind: 'star',
+      },
+    });
+  }
+
+  found.sort((a, b) => a.score - b.score || a.entry.magnitude - b.entry.magnitude);
+
+  // One entry per object: a star can match on both its proper name and its
+  // Bayer designation.
+  const seen = new Set<number>();
+  const results: TonightEntry[] = [];
+  for (const { entry } of found) {
+    if (seen.has(entry.index)) continue;
+    seen.add(entry.index);
+    results.push(entry);
+    if (results.length >= limit) break;
+  }
+
+  return results;
+}
+
+/* ------------------------------------------------------------------ *
+ * Calibration
+ * ------------------------------------------------------------------ */
+
+/** Objects bright enough to aim at unambiguously, for compass calibration. */
+export function calibrationTargets(frame: SkyFrame, data: SkyData, limit = 8): TonightEntry[] {
+  return tonight(frame, data, 60)
+    .filter((entry) => entry.altitude > 12 && entry.altitude < 78 && entry.magnitude < 2)
+    .slice(0, limit);
+}
+
+export interface CalibrationResult {
+  /** Degrees to add to the sensor heading. */
+  offset: number;
+  /** The heading the sensors reported. */
+  reported: number;
+  /** The heading the object is actually at. */
+  actual: number;
+}
+
+/**
+ * Work out the compass error from one sighting.
+ *
+ * The user aims the crosshair at an object they can see and confirms. Whatever
+ * the sensors claim the heading is, the object's true azimuth is known exactly,
+ * so the difference is the magnetometer's error -- local iron, a phone case, a
+ * miscalibrated sensor, all of it at once.
+ *
+ * Only azimuth is corrected. Altitude comes from the accelerometer measuring
+ * gravity, which is accurate and cannot be thrown off by a nearby speaker.
+ */
+export function calibrate(reportedAzimuth: number, target: TonightEntry): CalibrationResult {
+  const difference = ((target.azimuth - reportedAzimuth + 540) % 360) - 180;
+  return { offset: difference, reported: reportedAzimuth, actual: target.azimuth };
 }

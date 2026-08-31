@@ -180,7 +180,9 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 88px;
+  /* Four buttons across a 366px bar. Still a 44px+ touch target in both axes. */
+  min-width: 72px;
+  flex: 1 1 0;
   height: 58px;
   padding: 0 8px;
   border: 0;
@@ -727,4 +729,78 @@ input[type='range']::-moz-range-thumb {
 .toast[data-open='true'] {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* ------------------------------------------------------------------ *
+ * Search
+ * ------------------------------------------------------------------ */
+
+.searchbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  margin-top: 16px;
+  padding: 0 14px;
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  flex: 0 0 auto;
+}
+
+.searchbar:focus-within {
+  border-color: rgba(233, 169, 59, 0.5);
+}
+
+.searchbar-icon {
+  display: flex;
+  color: var(--faint);
+}
+
+.searchbar input {
+  flex-grow: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+}
+
+.searchbar input:focus {
+  outline: none;
+}
+
+.searchbar input::placeholder {
+  color: rgba(238, 242, 248, 0.34);
+}
+
+/* Safari draws its own clear button, which collides with the glass styling. */
+.searchbar input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Calibration
+ * ------------------------------------------------------------------ */
+
+.cal-status {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(233, 169, 59, 0.28);
+  border-radius: 12px;
+  background: rgba(233, 169, 59, 0.07);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.item[aria-pressed='true'] {
+  background: rgba(233, 169, 59, 0.1);
+  border-radius: 12px;
+}
+
+.primary:disabled {
+  opacity: 0.4;
 }

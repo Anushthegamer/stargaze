@@ -35,6 +35,9 @@ export const icons = {
   ),
   close: svg('<line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line>', 18),
   arrow: svg('<path d="M12 5 L12 19 M12 5 L8.4 9 M12 5 L15.6 9"></path>', 22),
+  search: svg(
+    '<circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="15.4" y1="15.4" x2="20.5" y2="20.5"></line>',
+  ),
 };
 
 export interface Shell {
@@ -47,6 +50,11 @@ export interface Shell {
   modeButton: HTMLButtonElement;
   tonightButton: HTMLButtonElement;
   settingsButton: HTMLButtonElement;
+  searchButton: HTMLButtonElement;
+  searchInput: HTMLInputElement;
+  calibrateButton: HTMLButtonElement;
+  calibrateConfirm: HTMLButtonElement;
+  calibrateReset: HTMLButtonElement;
 
   cardClose: HTMLButtonElement;
 
@@ -76,7 +84,18 @@ export interface Shell {
   openCard(detail: ObjectDetail): void;
   closeCard(): void;
   openSettings(): void;
-  openTonight(entries: TonightEntry[], onPick: (entry: TonightEntry) => void): void;
+  openTonight(
+    entries: TonightEntry[],
+    caption: string,
+    onPick: (entry: TonightEntry) => void,
+  ): void;
+  openSearch(onQuery: (query: string) => TonightEntry[], onPick: (entry: TonightEntry) => void): void;
+  openCalibrate(
+    targets: TonightEntry[],
+    onSelect: (entry: TonightEntry) => void,
+    currentOffset: number,
+  ): void;
+  setCalibrationStatus(text: string): void;
   closeSheets(): void;
 }
 
@@ -107,6 +126,7 @@ export function buildShell(root: HTMLElement): Shell {
       </div>
       <div class="spacer"></div>
       <div class="navbar glass">
+        <button class="navbtn" id="btn-search" type="button">${icons.search}<span>Search</span></button>
         <button class="navbtn" id="btn-tonight" type="button">${icons.tonight}<span>Tonight</span></button>
         <button class="navbtn" id="btn-mode" type="button" aria-pressed="false">${icons.compass}<span>Drag</span></button>
         <button class="navbtn" id="btn-settings" type="button">${icons.settings}<span>Settings</span></button>
@@ -137,6 +157,39 @@ export function buildShell(root: HTMLElement): Shell {
       <h2>Tonight</h2>
       <div class="help" id="tonight-sub" style="margin-top:6px"></div>
       <div class="sheet-body"><div class="list" id="tonight-list"></div></div>
+    </div>
+
+    <div class="sheet glass" id="sheet-search">
+      <div class="grabber"></div>
+      <h2>Search</h2>
+      <div class="searchbar">
+        <span class="searchbar-icon">${icons.search}</span>
+        <input id="search-input" type="search" inputmode="search" autocomplete="off"
+          autocapitalize="off" spellcheck="false" placeholder="Star, planet or constellation" />
+      </div>
+      <div class="sheet-body"><div class="list" id="search-list"></div></div>
+    </div>
+
+    <div class="sheet glass" id="sheet-calibrate">
+      <div class="grabber"></div>
+      <h2>Calibrate the compass</h2>
+      <div class="sheet-body">
+        <p class="help" style="line-height:1.5;margin:0 0 12px">
+          A phone compass is out by 5&ndash;15&deg;, and worse near metal or in a car.
+          Everything else here is accurate to a fraction of an arcminute, so this
+          one sighting is the largest accuracy gain available.
+        </p>
+        <p class="help" style="line-height:1.5;margin:0 0 18px">
+          Pick something you can actually see, put the crosshair on it, hold still,
+          then confirm.
+        </p>
+        <div class="cal-status" id="cal-status">Choose a target.</div>
+        <div class="list" id="cal-list"></div>
+        <button class="primary" id="cal-confirm" type="button" style="margin-top:20px" disabled>
+          Confirm sighting
+        </button>
+        <button class="secondary" id="cal-reset" type="button">Clear correction</button>
+      </div>
     </div>
 
     <div class="sheet glass" id="sheet-settings">
@@ -197,6 +250,13 @@ export function buildShell(root: HTMLElement): Shell {
         </div>
 
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+          <span class="cap">Accuracy</span>
+          <button class="secondary" id="btn-calibrate" type="button" style="margin-top:14px">
+            Calibrate on a known star
+          </button>
+        </div>
+
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
           <span class="cap">Time travel</span>
           <div class="field">
             <div class="field-head"><b>Offset from now</b><span id="time-value">now</span></div>
@@ -250,9 +310,14 @@ export function buildShell(root: HTMLElement): Shell {
 
   let toastTimer = 0;
 
+  const sheetSearch = pick('sheet-search');
+  const sheetCalibrate = pick('sheet-calibrate');
+
   const closeSheets = (): void => {
     sheetTonight.dataset.open = 'false';
     sheetSettings.dataset.open = 'false';
+    sheetSearch.dataset.open = 'false';
+    sheetCalibrate.dataset.open = 'false';
   };
 
   // Tapping the sky dismisses whatever is open.
@@ -268,6 +333,11 @@ export function buildShell(root: HTMLElement): Shell {
     modeButton: pick<HTMLButtonElement>('btn-mode'),
     tonightButton: pick<HTMLButtonElement>('btn-tonight'),
     settingsButton: pick<HTMLButtonElement>('btn-settings'),
+    searchButton: pick<HTMLButtonElement>('btn-search'),
+    searchInput: pick<HTMLInputElement>('search-input'),
+    calibrateButton: pick<HTMLButtonElement>('btn-calibrate'),
+    calibrateConfirm: pick<HTMLButtonElement>('cal-confirm'),
+    calibrateReset: pick<HTMLButtonElement>('cal-reset'),
     cardClose: pick<HTMLButtonElement>('card-close'),
 
     magInput: pick<HTMLInputElement>('mag'),
@@ -365,44 +435,77 @@ export function buildShell(root: HTMLElement): Shell {
     },
 
     openSettings() {
+      closeSheets();
       card.dataset.open = 'false';
-      sheetTonight.dataset.open = 'false';
       sheetSettings.dataset.open = 'true';
     },
 
-    openTonight(entries, onPick) {
+    openSearch(onQuery, onPick) {
+      closeSheets();
+      card.dataset.open = 'false';
+      sheetSearch.dataset.open = 'true';
+
+      const list = pick('search-list');
+      const input = pick<HTMLInputElement>('search-input');
+
+      const run = (): void => {
+        const query = input.value;
+        if (query.trim().length === 0) {
+          list.innerHTML =
+            '<p class="empty">Type a name.<br>Sirius, Jupiter, Orion&hellip;</p>';
+          return;
+        }
+        const results = onQuery(query);
+        if (results.length === 0) {
+          list.innerHTML = `<p class="empty">Nothing matches &ldquo;${escapeHtml(query)}&rdquo;.</p>`;
+          return;
+        }
+        renderList(list, results, onPick);
+      };
+
+      // Rebound on every open, so the handler closes over the current sky.
+      input.oninput = run;
+      run();
+      // Deliberately not focused: on a phone that throws the keyboard over the
+      // results before the user has decided they want to type.
+    },
+
+    openCalibrate(targets, onSelect, currentOffset) {
+      closeSheets();
+      card.dataset.open = 'false';
+      sheetCalibrate.dataset.open = 'true';
+
+      const list = pick('cal-list');
+      if (targets.length === 0) {
+        list.innerHTML =
+          '<p class="empty">Nothing bright enough is well placed right now.<br>Something between 12&deg; and 78&deg; up works best.</p>';
+      } else {
+        renderList(list, targets, onSelect);
+      }
+
+      pick('cal-status').textContent =
+        currentOffset === 0
+          ? 'Choose a target.'
+          : `Correction is ${currentOffset > 0 ? '+' : ''}${currentOffset.toFixed(1)}°. Choose a target to redo it.`;
+      pick<HTMLButtonElement>('cal-confirm').disabled = true;
+    },
+
+    setCalibrationStatus(text) {
+      pick('cal-status').textContent = text;
+    },
+
+    openTonight(entries, caption, onPick) {
       card.dataset.open = 'false';
       sheetSettings.dataset.open = 'false';
 
-      pick('tonight-sub').textContent = `${entries.length} visible now`;
+      pick('tonight-sub').textContent = caption;
       const list = pick('tonight-list');
 
       if (entries.length === 0) {
-        list.innerHTML = `<p class="empty">Nothing above the horizon.<br>Try the time slider in settings.</p>`;
+        list.innerHTML =
+          '<p class="empty">Nothing above the horizon.<br>Try the time slider in settings.</p>';
       } else {
-        list.innerHTML = entries
-          .map(
-            (entry, i) => `
-          <button class="item" type="button" data-i="${i}">
-            <span class="item-name">
-              <b>${entry.label}</b>
-              <span>${entry.detail}</span>
-            </span>
-            <span class="item-num">
-              <b>${entry.magnitude > 0 ? '+' : ''}${entry.magnitude.toFixed(1)}</b>
-              <span>alt ${entry.altitude.toFixed(0)}°</span>
-            </span>
-            <span class="arrow"><span class="arrow-glyph" style="transform:rotate(${entry.azimuth.toFixed(1)}deg)">${icons.arrow}</span></span>
-          </button>`,
-          )
-          .join('');
-
-        list.querySelectorAll<HTMLButtonElement>('.item').forEach((button) => {
-          button.addEventListener('click', () => {
-            const entry = entries[Number(button.dataset.i)];
-            if (entry) onPick(entry);
-          });
-        });
+        renderList(list, entries, onPick);
       }
 
       sheetTonight.dataset.open = 'true';
@@ -412,6 +515,48 @@ export function buildShell(root: HTMLElement): Shell {
   };
 
   return shell;
+}
+
+/** One list of objects. Shared by the tonight, search and calibration sheets. */
+function renderList(
+  list: HTMLElement,
+  entries: TonightEntry[],
+  onPick: (entry: TonightEntry) => void,
+): void {
+  list.innerHTML = entries
+    .map(
+      (entry, i) => `
+    <button class="item" type="button" data-i="${i}">
+      <span class="item-name">
+        <b>${escapeHtml(entry.label)}</b>
+        <span>${entry.detail}</span>
+      </span>
+      <span class="item-num">
+        <b>${entry.magnitude > 0 ? '+' : ''}${entry.magnitude.toFixed(1)}</b>
+        <span>alt ${entry.altitude.toFixed(0)}°</span>
+      </span>
+      <span class="arrow"><span class="arrow-glyph" style="transform:rotate(${entry.azimuth.toFixed(1)}deg)">${icons.arrow}</span></span>
+    </button>`,
+    )
+    .join('');
+
+  list.querySelectorAll<HTMLButtonElement>('.item').forEach((button) => {
+    button.addEventListener('click', () => {
+      const entry = entries[Number(button.dataset.i)];
+      if (entry) onPick(entry);
+    });
+  });
+}
+
+/** Catalogue names are trusted; a search query is not. */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    if (character === '&') return '&amp;';
+    if (character === '<') return '&lt;';
+    if (character === '>') return '&gt;';
+    if (character === '"') return '&quot;';
+    return '&#39;';
+  });
 }
 
 /**

@@ -5,21 +5,34 @@
   "description": "Point your phone at the sky and it tells you what you are looking at. GPS, clock and compass -- no image recognition.",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "server"
   ],
   "scripts": {
     "data": "python tools/build_all.py",
     "dev": "npm run dev --workspace @stargaze/web",
+    "dev:https": "npm run dev:https --workspace @stargaze/web",
     "build": "npm run build --workspace @stargaze/web",
+    "serve": "npm run build && npm start --workspace @stargaze/server",
     "test": "npm run test --workspace @stargaze/core",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "npm run android:sync && cap open android",
+    "android:run": "npm run android:sync && cap run android"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@types/node": "^22.20.1",
     "typescript": "^5.7.2",
     "vitest": "^3.0.5"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/camera": "^8.2.3",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/geolocation": "^8.2.2"
   }
 }
