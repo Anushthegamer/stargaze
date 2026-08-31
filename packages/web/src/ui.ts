@@ -311,8 +311,8 @@ export function buildShell(root: HTMLElement): Shell {
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2 13.9 9.1 21 11 13.9 12.9 12 20 10.1 12.9 3 11 10.1 9.1Z" fill="var(--accent)"></path></svg>
         <span>StarGaze</span>
       </div>
-      <h1>Three sensors,<br>no guesswork.</h1>
-      <p class="lede">StarGaze doesn't photograph the sky — it calculates it. Where you are, what time it is, and which way you're pointing is everything it needs.</p>
+      <h1>Point your phone at the sky.</h1>
+      <p class="lede">It works out what's overhead from three things: where you are, what time it is, and which way you're pointing. No image recognition — the camera, if you allow it, is only there to show the real sky behind the overlay.</p>
       <div class="perms glass">
         <div class="perm">
           <span class="perm-icon">${icons.pin}</span>
@@ -326,7 +326,7 @@ export function buildShell(root: HTMLElement): Shell {
         </div>
         <div class="perm">
           <span class="perm-icon">${icons.compass}</span>
-          <span class="perm-text"><b>Motion &amp; compass</b><span>Tells the app which direction and angle you're aiming at.</span></span>
+          <span class="perm-text"><b>Motion &amp; compass</b><span>Tells the app which direction and angle you're aiming at. Phone compasses typically run several degrees off — Settings has a way to correct for it.</span></span>
           <span class="status" id="p-motion">Optional</span>
         </div>
       </div>
