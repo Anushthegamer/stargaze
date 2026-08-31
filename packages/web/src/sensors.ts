@@ -319,6 +319,23 @@ export class MagnetometerSource {
   }
 }
 
+/**
+ * Whether this device's PRIMARY pointing mechanism is touch, rather than a
+ * mouse or trackpad -- the signal this app actually needs, which is
+ * capability, not form factor. A laptop with a touchscreen still answers
+ * false here (its primary input stays the trackpad), and that is correct:
+ * showing it a phone's rear-camera view would put the user's own face on
+ * screen, not the sky.
+ *
+ * Not a proxy for "is this a phone" in general -- just for "does pointing at
+ * something with your finger, rather than a cursor, describe how this device
+ * is normally used", which is what decides whether a camera view and touch-
+ * sized chrome make sense by default.
+ */
+export function primaryPointerIsCoarse(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
 /** Whether the page is in a context where sensors are allowed at all. */
 export function isSecureContextForSensors(): boolean {
   // Camera, geolocation and motion all require a secure context. On a LAN this

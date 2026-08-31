@@ -123,6 +123,7 @@ button {
     calc(env(safe-area-inset-bottom, 0px) + 20px);
   display: flex;
   flex-direction: column;
+  transition: margin-inline 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .hud > * {
@@ -243,6 +244,40 @@ button {
 
 .sheet[data-open='true'] {
   transform: translateY(0);
+}
+
+/* Tablet and wider: a side panel, not a bottom sheet -- there's enough width
+   for the sky to stay visible next to it rather than under it. */
+@media (min-width: 840px) {
+  .sheet {
+    left: auto;
+    right: 16px;
+    top: 16px;
+    bottom: 16px;
+    margin-inline: 0;
+    width: min(400px, 32vw);
+    max-width: none;
+    max-height: none;
+    border-radius: var(--radius-xl);
+    transform: translateX(110%);
+  }
+
+  .sheet[data-open='true'] {
+    transform: translateX(0);
+  }
+
+  /* A swipe handle implies a swipe-down-to-dismiss gesture, which a side
+     panel does not have -- Escape and the existing close controls do the
+     same job here. */
+  .sheet .grabber {
+    display: none;
+  }
+
+  /* The HUD would otherwise sit centered under the open side panel. Shifting
+     it into the remaining space keeps the compass and readouts clear of it. */
+  body:has(.sheet[data-open='true']) .hud {
+    margin-inline: auto calc(min(400px, 32vw) + 32px);
+  }
 }
 
 .grabber {

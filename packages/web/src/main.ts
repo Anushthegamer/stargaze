@@ -29,6 +29,7 @@ import {
   DEFAULT_POSITION,
   MagnetometerSource,
   OrientationSource,
+  primaryPointerIsCoarse,
   requestCamera,
   requestPosition,
   isSecureContextForSensors,
@@ -187,6 +188,7 @@ class StarGaze {
     this.wireSettings();
     this.wireCanvas();
     this.wireNav();
+    this.wireKeyboard();
 
     window.addEventListener('resize', () => this.onResize());
     screen.orientation?.addEventListener?.('change', () => this.onResize());
@@ -250,7 +252,12 @@ class StarGaze {
     }
     this.shell.setPermission('location', this.permissions.location);
 
-    const camera = await requestCamera();
+    // A device whose primary pointer is a mouse or trackpad is a laptop or
+    // desktop -- its camera, if it has one, faces the user, not the sky.
+    // Asking for it would put the user's own face behind the overlay.
+    const camera = primaryPointerIsCoarse()
+      ? await requestCamera()
+      : { stream: null, state: 'unsupported' as const, fov: null };
     this.permissions.camera = camera.state;
     this.shell.setPermission('camera', camera.state);
 
@@ -461,6 +468,65 @@ class StarGaze {
     this.shell.cardClose.addEventListener('click', () => {
       this.selected = null;
       this.shell.closeCard();
+    });
+  }
+
+  /**
+   * Keyboard controls, for a mouse-and-keyboard device where dragging the
+   * canvas with a pointer still works but is not the natural way to look
+   * around. Arrows/zoom only act in drag mode -- there is no phone to move
+   * out from under a sensor-mode reading, so redefining what the keys do
+   * there would be surprising rather than useful.
+   */
+  private wireKeyboard(): void {
+    window.addEventListener('keydown', (event) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+
+      if (event.key === 'Escape') {
+        if (typing) target.blur();
+        this.selected = null;
+        this.shell.closeCard();
+        this.shell.closeSheets();
+        return;
+      }
+
+      if (typing) return; // never hijack keys while editing a field
+
+      const STEP = 3; // degrees per press -- a comfortable single tap
+      switch (event.key) {
+        case 'ArrowLeft':
+          if (this.mode === 'manual') this.lookAzimuth = normalize360(this.lookAzimuth - STEP);
+          break;
+        case 'ArrowRight':
+          if (this.mode === 'manual') this.lookAzimuth = normalize360(this.lookAzimuth + STEP);
+          break;
+        case 'ArrowUp':
+          if (this.mode === 'manual') this.lookAltitude = Math.min(90, this.lookAltitude + STEP);
+          break;
+        case 'ArrowDown':
+          if (this.mode === 'manual') this.lookAltitude = Math.max(-90, this.lookAltitude - STEP);
+          break;
+        case '+':
+        case '=':
+          this.setFov(this.settings.fov / 1.08);
+          break;
+        case '-':
+        case '_':
+          this.setFov(this.settings.fov * 1.08);
+          break;
+        case '/':
+          event.preventDefault();
+          this.shell.openSearch(
+            (query) => (this.frame ? search(query, this.frame, this.data) : []),
+            (entry) => this.goTo(entry),
+          );
+          window.setTimeout(() => this.shell.searchInput.focus(), 0);
+          return;
+        default:
+          return;
+      }
+      event.preventDefault();
     });
   }
 
