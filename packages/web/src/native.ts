@@ -77,6 +77,32 @@ export async function requestNativeLocation(): Promise<NativePermission> {
  * network. The plugin fails fast instead, which matters for an app whose whole
  * point is working in a field.
  */
+/**
+ * Start Android's hardware-fused rotation-vector sensor, where it exists.
+ *
+ * Returns false for every reason it might not work -- not native, no such
+ * sensor on this device, the plugin missing -- so the caller falls back to
+ * DeviceOrientationEvent the same way it already does for every other
+ * sensor gap. See RotationVectorPlugin.java for what this is fusing.
+ */
+export async function startRotationVector(
+  onReading: (reading: { x: number; y: number; z: number; w: number }) => void,
+): Promise<boolean> {
+  if (!isNative()) return false;
+
+  try {
+    const { RotationVector } = await import('./rotationVector.js');
+    const { available } = await RotationVector.isAvailable();
+    if (!available) return false;
+
+    await RotationVector.addListener('reading', onReading);
+    await RotationVector.start();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function nativePosition(): Promise<{
   latitude: number;
   longitude: number;

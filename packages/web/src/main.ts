@@ -15,6 +15,7 @@ import './styles.css';
 
 import {
   basisFromDeviceOrientation,
+  basisFromQuaternion,
   HeadingFilter,
   isCalibrationStale,
   magneticFieldIntensity,
@@ -31,9 +32,11 @@ import {
   requestCamera,
   requestPosition,
   isSecureContextForSensors,
+  screenAngle,
   type PermissionState,
   type Position,
 } from './sensors.js';
+import { startRotationVector } from './native.js';
 import { SkyRenderer, type RenderOptions } from './render.js';
 import {
   calibrate,
@@ -127,6 +130,12 @@ class StarGaze {
   private readonly orientation = new OrientationSource();
   private readonly heading = new HeadingFilter(0.18);
   private latest: { alpha: number; beta: number; gamma: number; screenAngle: number } | null = null;
+
+  /** Set once the native rotation-vector sensor (RotationVectorPlugin.java)
+   *  starts reporting -- Android only, and only where the hardware has that
+   *  sensor. Preferred over DeviceOrientationEvent when it's running. */
+  private usingNativeRotationVector = false;
+  private latestQuaternion: { x: number; y: number; z: number; w: number } | null = null;
 
   private readonly magnetometer = new MagnetometerSource();
   private liveFieldMicrotesla: number | null = null;
@@ -224,6 +233,14 @@ class StarGaze {
       this.liveFieldMicrotesla = microtesla;
     });
 
+    // Prefer the hardware-fused sensor where Android provides one -- this
+    // does not depend on the DeviceOrientationEvent permission above, and
+    // resolves quickly (false) everywhere it does not apply, so it is worth
+    // waiting for rather than racing it against the mode decision below.
+    this.usingNativeRotationVector = await startRotationVector((reading) => {
+      this.latestQuaternion = reading;
+    });
+
     const position = await requestPosition();
     if (position) {
       this.observer = position;
@@ -247,7 +264,7 @@ class StarGaze {
       }
     }
 
-    this.mode = motion === 'granted' ? 'sensors' : 'manual';
+    this.mode = motion === 'granted' || this.usingNativeRotationVector ? 'sensors' : 'manual';
     this.enterSky();
   }
 
@@ -263,7 +280,10 @@ class StarGaze {
           : 'No compass available — drag to look around, pinch to zoom.',
         5200,
       );
-    } else if (!this.orientation.absolute) {
+    } else if (!this.usingNativeRotationVector && !this.orientation.absolute) {
+      // The native rotation-vector sensor is hardware-fused and always
+      // reports a compass-referenced heading -- this warning is about
+      // DeviceOrientationEvent's own gap, which does not apply here.
       this.shell.toast(
         'Your browser is reporting orientation without a compass reference, so north is a guess. ' +
           'Use the true-north offset in settings to correct it.',
@@ -580,6 +600,9 @@ class StarGaze {
       this.lookAltitude = this.currentBasis().altitude;
       this.lookAzimuth = this.currentBasis().azimuth;
       this.shell.toast('Drag to look around.', 2600);
+    } else if (this.usingNativeRotationVector) {
+      this.mode = 'sensors';
+      this.shell.toast('Following the phone.', 2200);
     } else {
       const state = this.orientation.receiving
         ? 'granted'
@@ -754,6 +777,12 @@ class StarGaze {
   private currentBasis(): CameraBasis {
     const declination =
       (this.frame?.declinationReliable ? this.frame.declination : 0) + this.settings.northOffset;
+
+    if (this.mode === 'sensors' && this.usingNativeRotationVector && this.latestQuaternion) {
+      // Hardware-fused already -- no JS-side smoothing on top, the same way
+      // basisFromDeviceOrientation below is trusted unsmoothed for beta/gamma.
+      return basisFromQuaternion(this.latestQuaternion, screenAngle(), declination);
+    }
 
     if (this.mode === 'sensors' && this.latest) {
       const smoothed = this.heading.push(this.latest.alpha);
