@@ -20,7 +20,6 @@ against a star catalogue: cheap, exact, and 60fps on a budget phone.
 
 | Step | State |
 |---|---|
-| Design canvas — five dark-theme screens | done |
 | `tools/` — Python data pipeline | done |
 | `packages/core` — astronomy, verified against JPL | done, 78 tests |
 | `packages/web` — camera AR client | done |
@@ -103,7 +102,6 @@ Listed here rather than left implied, so nothing looks finished that isn't.
 ## Layout
 
 ```
-design/      Five .dc.html artboards + the canvas that publishes them
 tools/       Build-time Python: catalogues in, JSON out. Never runs in the app.
 packages/
   core/      On-device astronomy. No DOM, no network, no state. Shared by both clients.
@@ -228,3 +226,8 @@ target for checking the overlay is aligned.
 
 Star and constellation data, planetary elements and the geomagnetic model are
 all free to use — see [NOTICE.md](NOTICE.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE). Bundled datasets keep their own licenses; see
+[NOTICE.md](NOTICE.md).

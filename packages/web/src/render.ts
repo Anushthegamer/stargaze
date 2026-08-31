@@ -19,7 +19,6 @@ import {
   couldBeVisible,
   directionFromHorizontal,
   focalLength,
-  moonPhaseName,
   project,
   viewConeRadius,
   type CameraBasis,
@@ -470,14 +469,4 @@ export class SkyRenderer {
 
     return best;
   }
-}
-
-/** Human-readable summary line for an object, used by the info card. */
-export function describeObject(object: SkyObject): string {
-  if (object.kind === 'moon') {
-    return `${moonPhaseName(object.phase ?? 0)} · ${Math.round((object.illumination ?? 0) * 100)}% lit`;
-  }
-  if (object.kind === 'planet') return 'Planet';
-  if (object.kind === 'sun') return 'The Sun';
-  return 'Star';
 }

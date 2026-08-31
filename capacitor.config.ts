@@ -17,9 +17,9 @@ const config: CapacitorConfig = {
     // The app is served from the APK over https://localhost, so there is no
     // reason to allow anything to load over plain http.
     allowMixedContent: false,
-    // Star fields are dark and full of small bright dots; the extra bit depth
-    // is worth having and costs nothing on any modern device.
-    webContentsDebuggingEnabled: true,
+    // Leaves the WebView remotely inspectable (chrome://inspect) when true.
+    // Off for release; flip to true locally when debugging on-device.
+    webContentsDebuggingEnabled: false,
   },
 
   server: {

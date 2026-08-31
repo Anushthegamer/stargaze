@@ -62,8 +62,3 @@ export function angularSeparation(
 
   return toDegrees(Math.atan2(numerator, denominator));
 }
-
-/** Interpolate between two angles the short way round. */
-export function lerpAngle(from: number, to: number, t: number): number {
-  return normalize360(from + angularDelta(from, to) * t);
-}
