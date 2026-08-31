@@ -66,11 +66,6 @@ export function localSiderealTime(jd: number, longitudeDeg: number): number {
   return normalize360(greenwichMeanSiderealTime(jd) + longitudeDeg);
 }
 
-/** Convenience: local sidereal time straight from a Date. */
-export function localSiderealTimeAt(when: Date, longitudeDeg: number): number {
-  return localSiderealTime(julianDate(when), longitudeDeg);
-}
-
 /**
  * Delta-T: Terrestrial Time minus UT, in seconds.
  *
