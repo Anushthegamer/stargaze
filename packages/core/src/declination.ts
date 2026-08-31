@@ -26,11 +26,15 @@ export interface DeclinationGridJson {
   decl: number[];
   /** Change per year, degrees. */
   rate: number[];
+  /** Total field strength, nanotesla, at the model epoch. Absent from older
+   *  catalogue builds. */
+  intensity?: number[];
 }
 
-export interface DeclinationGrid extends Omit<DeclinationGridJson, 'decl' | 'rate'> {
+export interface DeclinationGrid extends Omit<DeclinationGridJson, 'decl' | 'rate' | 'intensity'> {
   decl: Float32Array;
   rate: Float32Array;
+  intensity: Float32Array;
 }
 
 export function parseDeclinationGrid(json: DeclinationGridJson): DeclinationGrid {
@@ -38,6 +42,7 @@ export function parseDeclinationGrid(json: DeclinationGridJson): DeclinationGrid
     ...json,
     decl: Float32Array.from(json.decl),
     rate: Float32Array.from(json.rate),
+    intensity: json.intensity ? Float32Array.from(json.intensity) : new Float32Array(0),
   };
 }
 
@@ -114,4 +119,50 @@ export function magneticDeclination(
   const years = decimalYear(when) - grid.epoch;
 
   return { degrees: normalize180(base + perYear * years), reliable: true };
+}
+
+export interface FieldIntensityResult {
+  /** Total geomagnetic field strength, nanotesla. */
+  nanotesla: number;
+  reliable: boolean;
+}
+
+/**
+ * Total geomagnetic field strength at a position, bilinearly interpolated --
+ * what a magnetometer should read if nothing nearby is interfering with it.
+ *
+ * A plain (non-angular) interpolation: unlike declination, intensity has no
+ * wraparound to worry about, so this does not need the short-way-round blend
+ * {@link magneticDeclination} uses. No secular-variation term either -- field
+ * strength drifts a percent or so a decade, not worth a second rate grid the
+ * way declination's bearing needs one.
+ */
+export function magneticFieldIntensity(
+  grid: DeclinationGrid,
+  latitude: number,
+  longitude: number,
+): FieldIntensityResult {
+  if (grid.intensity.length === 0 || latitude < grid.latMin || latitude > grid.latMax) {
+    return { nanotesla: 0, reliable: false };
+  }
+
+  const latPosition = (latitude - grid.latMin) / grid.latStep;
+  const lonNormalized = normalize180(longitude);
+  const lonPosition = (lonNormalized - grid.lonMin) / grid.lonStep;
+
+  const latIndex = Math.min(Math.floor(latPosition), grid.latCount - 1);
+  const lonIndex = Math.floor(lonPosition);
+  const latFraction = latPosition - latIndex;
+  const lonFraction = lonPosition - lonIndex;
+  const latNext = Math.min(latIndex + 1, grid.latCount - 1);
+  const lonWrapped = ((lonIndex % grid.lonCount) + grid.lonCount) % grid.lonCount;
+  const lonNext = (lonWrapped + 1) % grid.lonCount;
+
+  const at = (row: number, column: number): number =>
+    grid.intensity[row * grid.lonCount + column] as number;
+
+  const bottom = at(latIndex, lonWrapped) + (at(latIndex, lonNext) - at(latIndex, lonWrapped)) * lonFraction;
+  const top = at(latNext, lonWrapped) + (at(latNext, lonNext) - at(latNext, lonWrapped)) * lonFraction;
+
+  return { nanotesla: bottom + (top - bottom) * latFraction, reliable: true };
 }

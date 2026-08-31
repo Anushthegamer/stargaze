@@ -205,6 +205,57 @@ export function applyDiurnalParallax(position: Horizontal, distanceAu: number): 
   };
 }
 
+/** Earth's mean radius, km -- good enough for "did you move far enough that a
+ *  local compass calibration might not hold any more", not for surveying. */
+const EARTH_MEAN_RADIUS_KM = 6371;
+
+/** Great-circle distance between two points on the Earth's surface, km. */
+export function greatCircleDistanceKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const sinHalfLat = Math.sin(dLat / 2);
+  const sinHalfLon = Math.sin(dLon / 2);
+
+  const a =
+    sinHalfLat * sinHalfLat +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * sinHalfLon * sinHalfLon;
+
+  return 2 * EARTH_MEAN_RADIUS_KM * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a)));
+}
+
+/** A compass calibration older than this, or measured this far away, is
+ *  treated as unreliable -- see {@link isCalibrationStale}. Judgment calls,
+ *  not physical constants: the correction is for local hardware bias and
+ *  interference, which does not have a textbook half-life. */
+export const CALIBRATION_STALE_DAYS = 14;
+export const CALIBRATION_STALE_KM = 20;
+
+/**
+ * Whether a compass calibration measured at one place and time should still
+ * be trusted at another.
+ *
+ * A correction measured next to a car, or with a case that has since come
+ * off, is wrong somewhere else -- and "somewhere else" is closer to "has the
+ * user plausibly moved to a different magnetic environment" than to strict
+ * distance, which is why this checks both age and displacement rather than
+ * either alone.
+ */
+export function isCalibrationStale(
+  measured: { atMs: number; lat: number; lon: number },
+  now: { atMs: number; lat: number; lon: number },
+): boolean {
+  const days = (now.atMs - measured.atMs) / 86400000;
+  if (days > CALIBRATION_STALE_DAYS) return true;
+
+  const km = greatCircleDistanceKm(measured.lat, measured.lon, now.lat, now.lon);
+  return km > CALIBRATION_STALE_KM;
+}
+
 /** Standard altitude at which a body counts as risen or set. */
 export const RISE_SET_ALTITUDE = {
   /** Stars and planets: refraction alone. */

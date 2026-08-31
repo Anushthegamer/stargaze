@@ -11,6 +11,7 @@ import {
   apparentTerms,
   applyApparentPlace,
   applyDiurnalParallax,
+  combineAngles,
   countBrighterThan,
   createHorizontalBuffer,
   equatorialToHorizontal,
@@ -618,4 +619,24 @@ export interface CalibrationResult {
 export function calibrate(reportedAzimuth: number, target: TonightEntry): CalibrationResult {
   const difference = ((target.azimuth - reportedAzimuth + 540) % 360) - 180;
   return { offset: difference, reported: reportedAzimuth, actual: target.azimuth };
+}
+
+export interface CombinedCalibration {
+  /** Degrees to add to the sensor heading -- the circular mean of the kept sightings. */
+  offset: number;
+  /** How many sightings went into the average. */
+  count: number;
+  /** How many were thrown out as outliers, more than 90 degrees from the rest. */
+  discarded: number;
+}
+
+/**
+ * Combine several single-sighting offsets into one, more robust than trusting
+ * any single sighting to noise -- a hand not quite steady, a target picked
+ * just as a cloud passed over it. See {@link combineAngles} for the maths;
+ * this just renames its fields to the calibration domain.
+ */
+export function combineCalibrations(offsets: number[]): CombinedCalibration {
+  const combined = combineAngles(offsets);
+  return { offset: combined.mean, count: combined.count, discarded: combined.discarded };
 }

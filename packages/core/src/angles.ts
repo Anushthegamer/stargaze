@@ -62,3 +62,45 @@ export function angularSeparation(
 
   return toDegrees(Math.atan2(numerator, denominator));
 }
+
+export interface CombinedAngles {
+  /** The circular mean of the kept values, degrees. */
+  mean: number;
+  /** How many values went into the mean. */
+  count: number;
+  /** How many were thrown out as outliers, more than 90 degrees from the rest. */
+  discarded: number;
+}
+
+/**
+ * Combine several measurements of the same angle into one, more robust than
+ * trusting any single measurement to noise.
+ *
+ * Circular mean, because a plain average breaks at the 0/360 wrap -- averaging
+ * 359 and 1 has to give 0, not 180. A value more than 90 degrees from the
+ * rough mean is dropped rather than averaged in: that much disagreement means
+ * it measured something else entirely, not that the true value is that
+ * uncertain, and letting it in would corrupt an otherwise-good result.
+ */
+export function combineAngles(degrees: number[]): CombinedAngles {
+  if (degrees.length === 0) return { mean: 0, count: 0, discarded: 0 };
+
+  const rough = circularMean(degrees);
+  const kept = degrees.filter((d) => Math.abs(angularDelta(rough, d)) <= 90);
+  const mean = kept.length > 0 ? circularMean(kept) : rough;
+
+  return { mean, count: kept.length, discarded: degrees.length - kept.length };
+}
+
+function circularMean(degrees: number[]): number {
+  let sinSum = 0;
+  let cosSum = 0;
+  for (const d of degrees) {
+    const rad = toRadians(d);
+    sinSum += Math.sin(rad);
+    cosSum += Math.cos(rad);
+  }
+  // atan2's principal value is already (-180, 180], which is exactly the
+  // range a compass offset or a heading delta lives in -- no separate wrap.
+  return toDegrees(Math.atan2(sinSum, cosSum));
+}

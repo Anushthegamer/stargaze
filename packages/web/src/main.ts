@@ -16,6 +16,8 @@ import './styles.css';
 import {
   basisFromDeviceOrientation,
   HeadingFilter,
+  isCalibrationStale,
+  magneticFieldIntensity,
   normalize360,
   type CameraBasis,
   type Viewport,
@@ -24,6 +26,7 @@ import {
 import { loadSkyData, type SkyData } from './data.js';
 import {
   DEFAULT_POSITION,
+  MagnetometerSource,
   OrientationSource,
   requestCamera,
   requestPosition,
@@ -35,11 +38,13 @@ import { SkyRenderer, type RenderOptions } from './render.js';
 import {
   calibrate,
   calibrationTargets,
+  combineCalibrations,
   describe,
   search,
   SkyModel,
   skyCaption,
   tonight,
+  type CalibrationResult,
   type SkyFrame,
   type TonightEntry,
 } from './sky.js';
@@ -56,6 +61,9 @@ interface Settings {
   showLabels: boolean;
   showHorizon: boolean;
   northOffset: number;
+  /** Where and when northOffset was last measured, so it can be judged stale
+   *  -- see isCalibrationStale. Null until the first calibration. */
+  calibratedAt: { atMs: number; lat: number; lon: number } | null;
   /** Atmospheric refraction lifts everything near the horizon by up to half a
    *  degree -- on by default, since that is what is actually visible. Off
    *  gives the true (airless) altitude. */
@@ -69,6 +77,7 @@ const DEFAULTS: Settings = {
   showLabels: true,
   showHorizon: true,
   northOffset: 0,
+  calibratedAt: null,
   refraction: true,
 };
 
@@ -119,6 +128,14 @@ class StarGaze {
   private readonly heading = new HeadingFilter(0.18);
   private latest: { alpha: number; beta: number; gamma: number; screenAngle: number } | null = null;
 
+  private readonly magnetometer = new MagnetometerSource();
+  private liveFieldMicrotesla: number | null = null;
+  /** True when the live field reading disagrees with the IGRF model by more
+   *  than ordinary sensor variation explains -- a nearby magnet or ferrous
+   *  object, not a compass calibration error. Chrome/Android only; stays
+   *  false everywhere else, since there is nothing to compare. */
+  private magneticInterference = false;
+
   private permissions: Record<'camera' | 'location' | 'motion', PermissionState> = {
     camera: 'unknown',
     location: 'unknown',
@@ -130,6 +147,14 @@ class StarGaze {
 
   /** The object being sighted during compass calibration, if any. */
   private calibrationTarget: TonightEntry | null = null;
+  /** Sightings collected in the current calibration session. */
+  private calibrationSightings: CalibrationResult[] = [];
+  /** The correction in effect when the session started -- every sighting's
+   *  raw reading is measured against this, not against a value that changes
+   *  mid-session, or sightings would stop being comparable to each other. */
+  private calibrationBaseline = 0;
+
+  private static readonly MAX_CALIBRATION_SIGHTINGS = 3;
 
   async start(root: HTMLElement): Promise<void> {
     this.shell = buildShell(root);
@@ -193,6 +218,11 @@ class StarGaze {
     });
     this.permissions.motion = motion;
     this.shell.setPermission('motion', motion);
+    // No permission prompt of its own, and every failure mode is silent --
+    // safe to just try, regardless of platform.
+    this.magnetometer.start((microtesla) => {
+      this.liveFieldMicrotesla = microtesla;
+    });
 
     const position = await requestPosition();
     if (position) {
@@ -243,6 +273,30 @@ class StarGaze {
 
     if (this.permissions.location === 'denied') {
       this.shell.toast('No location — showing the sky from Greenwich. Set yours in settings.', 6000);
+    }
+
+    this.warnIfCalibrationStale();
+  }
+
+  /**
+   * A compass correction measured next to a car, or weeks ago in another
+   * city, is not trustworthy here and now. This does not touch the offset
+   * itself -- it is still better than nothing -- it just says so, once, when
+   * it might matter: entering the sky and after the observer location moves.
+   */
+  private warnIfCalibrationStale(): void {
+    if (this.settings.northOffset === 0 || !this.settings.calibratedAt) return;
+
+    const stale = isCalibrationStale(this.settings.calibratedAt, {
+      atMs: Date.now(),
+      lat: this.observer.latitude,
+      lon: this.observer.longitude,
+    });
+    if (stale) {
+      this.shell.toast(
+        'Your compass correction was measured somewhere else, or a while ago — it may no longer be right. Settings → Calibrate to redo it.',
+        6000,
+      );
     }
   }
 
@@ -424,9 +478,15 @@ class StarGaze {
     shell.calibrateButton.addEventListener('click', () => {
       if (!this.frame) return;
       this.calibrationTarget = null;
+      this.calibrationSightings = [];
+      this.calibrationBaseline = this.settings.northOffset;
       shell.openCalibrate(
         calibrationTargets(this.frame, this.data),
         (entry) => {
+          if (this.calibrationSightings.length >= StarGaze.MAX_CALIBRATION_SIGHTINGS) {
+            shell.setCalibrationStatus('Three sightings is plenty — close when done, or clear to start over.');
+            return;
+          }
           this.calibrationTarget = entry;
           shell.calibrateConfirm.disabled = false;
           shell.setCalibrationStatus(
@@ -435,6 +495,20 @@ class StarGaze {
         },
         this.settings.northOffset,
       );
+
+      if (
+        this.settings.northOffset !== 0 &&
+        this.settings.calibratedAt &&
+        isCalibrationStale(this.settings.calibratedAt, {
+          atMs: Date.now(),
+          lat: this.observer.latitude,
+          lon: this.observer.longitude,
+        })
+      ) {
+        shell.setCalibrationStatus(
+          'Your last correction was measured somewhere else, or a while ago. Worth redoing.',
+        );
+      }
     });
 
     shell.calibrateConfirm.addEventListener('click', () => {
@@ -450,28 +524,48 @@ class StarGaze {
         return;
       }
 
-      // Measure against the raw sensor heading, with the existing correction
-      // removed, or each calibration would be relative to the last one.
-      const raw = this.currentBasis().azimuth - this.settings.northOffset;
+      // Measure against the raw sensor heading, with the correction that was
+      // in effect when this session started removed -- every sighting in the
+      // session has to be relative to the same baseline, or a second sighting
+      // would be measuring the first one instead of the compass.
+      const raw = this.currentBasis().azimuth - this.calibrationBaseline;
       const result = calibrate(raw, target);
+      this.calibrationSightings.push(result);
+      this.calibrationTarget = null;
+      shell.calibrateConfirm.disabled = true;
 
-      this.settings.northOffset = Number(result.offset.toFixed(1));
+      const combined = combineCalibrations(this.calibrationSightings.map((s) => s.offset));
+      this.settings.northOffset = Number(combined.offset.toFixed(1));
+      this.settings.calibratedAt = {
+        atMs: Date.now(),
+        lat: this.observer.latitude,
+        lon: this.observer.longitude,
+      };
       saveSettings(this.settings);
       shell.offsetValue.textContent = `${this.settings.northOffset > 0 ? '+' : ''}${this.settings.northOffset.toFixed(1)}°`;
 
+      const n = this.calibrationSightings.length;
+      const discardNote = combined.discarded > 0 ? `, ${combined.discarded} discarded as off` : '';
+      const next =
+        n < StarGaze.MAX_CALIBRATION_SIGHTINGS
+          ? ' Pick another target for a steadier correction, or close when done.'
+          : ' That is plenty — close when done.';
       shell.setCalibrationStatus(
-        `Corrected by ${result.offset > 0 ? '+' : ''}${result.offset.toFixed(1)}°. ` +
-          `The compass read ${result.reported.toFixed(1)}°; ${target.label} is at ${result.actual.toFixed(1)}°.`,
+        `${n} sighting${n === 1 ? '' : 's'}${discardNote}. Corrected by ` +
+          `${combined.offset > 0 ? '+' : ''}${combined.offset.toFixed(1)}°.${next}`,
       );
       shell.toast(
-        `Compass corrected by ${result.offset > 0 ? '+' : ''}${result.offset.toFixed(1)}°.`,
+        `Compass corrected by ${combined.offset > 0 ? '+' : ''}${combined.offset.toFixed(1)}°.`,
         3600,
       );
     });
 
     shell.calibrateReset.addEventListener('click', () => {
       this.settings.northOffset = 0;
+      this.settings.calibratedAt = null;
       this.calibrationTarget = null;
+      this.calibrationSightings = [];
+      this.calibrationBaseline = 0;
       saveSettings(this.settings);
       shell.offsetValue.textContent = '0.0°';
       shell.calibrateConfirm.disabled = true;
@@ -624,6 +718,37 @@ class StarGaze {
       this.settings.magnitudeLimit,
       this.settings.refraction,
     );
+    this.updateMagneticInterference();
+  }
+
+  /**
+   * Compare the live magnetometer reading (where available) against the IGRF
+   * model's prediction for this location. Real field strength varies with
+   * geography by a factor of three across the globe, so the model -- not a
+   * fixed constant -- is the only honest baseline to check against.
+   */
+  private updateMagneticInterference(): void {
+    if (this.liveFieldMicrotesla === null) {
+      this.magneticInterference = false;
+      return;
+    }
+
+    const model = magneticFieldIntensity(
+      this.data.declination,
+      this.observer.latitude,
+      this.observer.longitude,
+    );
+    if (!model.reliable) {
+      this.magneticInterference = false;
+      return;
+    }
+
+    // Phone magnetometers are not lab instruments -- a modest disagreement
+    // with the model is normal calibration slop, not interference. Roughly
+    // double or roughly half the expected field is a nearby magnet, not
+    // sensor noise.
+    const ratio = this.liveFieldMicrotesla / (model.nanotesla / 1000);
+    this.magneticInterference = ratio > 1.8 || ratio < 0.55;
   }
 
   private currentBasis(): CameraBasis {
@@ -666,7 +791,7 @@ class StarGaze {
       };
 
       this.renderer.draw(this.frame, this.data, basis, this.viewport, options);
-      this.shell.updateHud(basis, this.frame, this.mode);
+      this.shell.updateHud(basis, this.frame, this.mode, this.magneticInterference);
     }
 
     requestAnimationFrame(() => this.tick());

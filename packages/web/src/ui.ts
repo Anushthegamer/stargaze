@@ -81,7 +81,7 @@ export interface Shell {
   gateWarning(text: string): void;
   fatal(title: string, detail: string): void;
   toast(text: string, ms?: number): void;
-  updateHud(basis: CameraBasis, frame: SkyFrame, mode: string): void;
+  updateHud(basis: CameraBasis, frame: SkyFrame, mode: string, magneticInterference: boolean): void;
   openCard(detail: ObjectDetail): void;
   closeCard(): void;
   openSettings(): void;
@@ -418,9 +418,18 @@ export function buildShell(root: HTMLElement): Shell {
       }, ms);
     },
 
-    updateHud(basis, frame, mode) {
+    updateHud(basis, frame, mode, magneticInterference) {
       pick('alt').textContent = `${basis.altitude.toFixed(1)}°`;
       pick('az').textContent = `${basis.azimuth.toFixed(1)}°`;
+
+      const azPill = pick('az').closest('.pill');
+      azPill?.classList.toggle('warn', magneticInterference);
+      azPill?.setAttribute(
+        'title',
+        magneticInterference
+          ? 'The magnetic field reading here does not match what is expected -- something nearby may be throwing the compass off.'
+          : '',
+      );
 
       const declPill = pick('decl-pill');
       if (frame.declinationReliable) {

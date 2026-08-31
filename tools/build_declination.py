@@ -161,8 +161,14 @@ def _legendre(theta: float) -> tuple[list[list[float]], list[list[float]]]:
     return p, dp
 
 
-def declination(lat_deg: float, lon_deg: float, year: float, coeffs) -> float:
-    """Magnetic declination in degrees east of true north, at sea level."""
+def _field(lat_deg: float, lon_deg: float, year: float, coeffs) -> tuple[float, float, float, float]:
+    """Geomagnetic field vector at sea level: (x, y, z, x_geo).
+
+    x, y, z are the geocentric north/east/down components; x_geo is x rotated
+    back to geodetic north, which only declination (the horizontal bearing)
+    needs -- total intensity is rotation-invariant, so callers that only want
+    that can ignore it.
+    """
     g, h, dg, dh = coeffs
     dt = year - MODEL_EPOCH
 
@@ -201,7 +207,26 @@ def declination(lat_deg: float, lon_deg: float, year: float, coeffs) -> float:
 
     # Rotate the geocentric north/down components back to geodetic.
     x_geo = x * cd + z * sd
+    return x, y, z, x_geo
+
+
+def declination(lat_deg: float, lon_deg: float, year: float, coeffs) -> float:
+    """Magnetic declination in degrees east of true north, at sea level."""
+    _x, y, _z, x_geo = _field(lat_deg, lon_deg, year, coeffs)
     return math.degrees(math.atan2(y, x_geo))
+
+
+def total_intensity(lat_deg: float, lon_deg: float, year: float, coeffs) -> float:
+    """Total magnetic field strength, nanotesla, at sea level.
+
+    What a magnetometer actually measures the magnitude of. Comparing this
+    against a live reading is how the app tells "your compass heading is
+    probably fine" from "there is a speaker magnet three centimetres from the
+    sensor" -- a discrepancy here means the reading is not to be trusted,
+    regardless of what heading it implies.
+    """
+    x, y, z, _x_geo = _field(lat_deg, lon_deg, year, coeffs)
+    return math.sqrt(x * x + y * y + z * z)
 
 
 # --------------------------------------------------------------------------
@@ -251,6 +276,7 @@ def main() -> int:
     lat_count = int((LAT_MAX - LAT_MIN) / LAT_STEP) + 1
     decl: list[float] = []
     rate: list[float] = []
+    intensity: list[float] = []
 
     for i in range(lat_count):
         lat = LAT_MIN + i * LAT_STEP
@@ -263,12 +289,16 @@ def main() -> int:
             change = (change + 180.0) % 360.0 - 180.0
             decl.append(rounded(now, 2))
             rate.append(rounded(change, 3))
+            intensity.append(rounded(total_intensity(lat, lon, MODEL_EPOCH, coeffs), 0))
 
     payload = {
         "model": "IGRF-14",
         "url": IGRF_URL,
         "epoch": MODEL_EPOCH,
-        "note": "Declination in degrees east of true north at sea level. Row-major, latitude outer.",
+        "note": (
+            "Declination in degrees east of true north at sea level; total field "
+            "intensity in nanotesla. Row-major, latitude outer."
+        ),
         "latMin": LAT_MIN,
         "latMax": LAT_MAX,
         "latStep": LAT_STEP,
@@ -281,6 +311,7 @@ def main() -> int:
         "worstTestDeviationDeg": rounded(worst, 3),
         "decl": decl,
         "rate": rate,
+        "intensity": intensity,
     }
 
     write_json(

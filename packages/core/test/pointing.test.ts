@@ -37,7 +37,12 @@ import {
   toHorizontal,
   type StarCatalog,
 } from '../src/catalog.js';
-import { magneticDeclination, parseDeclinationGrid, decimalYear } from '../src/declination.js';
+import {
+  magneticDeclination,
+  magneticFieldIntensity,
+  parseDeclinationGrid,
+  decimalYear,
+} from '../src/declination.js';
 import { equatorialToHorizontal, precessFromJ2000, refraction } from '../src/coords.js';
 import { apparentTerms, applyApparentPlace } from '../src/apparent.js';
 import { julianDate, localSiderealTime, terrestrialJulianDate } from '../src/time.js';
@@ -542,6 +547,49 @@ describe('magnetic declination', () => {
   it('computes decimal years', () => {
     expect(decimalYear(new Date('2025-01-01T00:00:00Z'))).toBeCloseTo(2025, 4);
     expect(decimalYear(new Date('2025-07-02T12:00:00Z'))).toBeCloseTo(2025.5, 2);
+  });
+});
+
+describe('magnetic field intensity', () => {
+  const grid = parseDeclinationGrid(declinationJson);
+
+  it('falls in the real-world range everywhere on the grid', () => {
+    // Earth's field runs roughly 22,000-67,000 nT depending on location; the
+    // weakest is the South Atlantic Anomaly, the strongest is near the poles.
+    for (const [name, lat, lon] of [
+      ['Bengaluru', 12.97, 77.59],
+      ['equator/mid-Pacific', 0, -160],
+      ['South Atlantic Anomaly', -25, -45],
+      ['near north pole', 80, 0],
+      ['near south pole', -80, 0],
+    ] as const) {
+      const result = magneticFieldIntensity(grid, lat, lon);
+      expect(result.reliable, name).toBe(true);
+      expect(result.nanotesla, name).toBeGreaterThan(18000);
+      expect(result.nanotesla, name).toBeLessThan(70000);
+    }
+  });
+
+  it('is stronger near the poles than near the equator', () => {
+    // The field is roughly dipolar: about twice as strong at the poles as at
+    // the magnetic equator.
+    const equator = magneticFieldIntensity(grid, 0, 0).nanotesla;
+    const pole = magneticFieldIntensity(grid, 80, 0).nanotesla;
+    expect(pole).toBeGreaterThan(equator);
+  });
+
+  it('interpolates smoothly rather than stepping between cells', () => {
+    let previous = magneticFieldIntensity(grid, 40, -74).nanotesla;
+    for (let lon = -74; lon <= -69; lon += 0.25) {
+      const next = magneticFieldIntensity(grid, 40, lon).nanotesla;
+      expect(Math.abs(next - previous)).toBeLessThan(200);
+      previous = next;
+    }
+  });
+
+  it('reports the polar regions as unreliable, matching declination', () => {
+    expect(magneticFieldIntensity(grid, 88, 0).reliable).toBe(false);
+    expect(magneticFieldIntensity(grid, 88, 0).nanotesla).toBe(0);
   });
 });
 

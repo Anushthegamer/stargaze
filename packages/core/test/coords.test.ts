@@ -10,12 +10,20 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { angularSeparation, normalize180, normalize360, angularDelta } from '../src/angles.js';
+import {
+  angularSeparation,
+  normalize180,
+  normalize360,
+  angularDelta,
+  combineAngles,
+} from '../src/angles.js';
 import {
   applyDiurnalParallax,
   diurnalParallax,
   equatorialToHorizontal,
+  greatCircleDistanceKm,
   horizontalToEquatorial,
+  isCalibrationStale,
   precessFromJ2000,
   refraction,
   riseTransitSet,
@@ -55,6 +63,43 @@ describe('angles', () => {
     expect(angularSeparation(10, 0, 11, 0)).toBeCloseTo(1, 9);
     // Near the pole it is not: RA lines converge.
     expect(angularSeparation(10, 89, 11, 89)).toBeLessThan(0.02);
+  });
+});
+
+describe('combineAngles', () => {
+  it('returns the single value unchanged for one measurement', () => {
+    const result = combineAngles([7.3]);
+    expect(result.mean).toBeCloseTo(7.3, 6);
+    expect(result.count).toBe(1);
+    expect(result.discarded).toBe(0);
+  });
+
+  it('averages a tight cluster, keeping every value', () => {
+    const result = combineAngles([8, 9, 10]);
+    expect(result.mean).toBeCloseTo(9, 6);
+    expect(result.count).toBe(3);
+    expect(result.discarded).toBe(0);
+  });
+
+  it('wraps correctly across 0/360, where a plain average would fail', () => {
+    // A plain arithmetic mean of 359 and 1 gives 180 -- exactly backwards.
+    const result = combineAngles([359, 1]);
+    expect(normalize180(result.mean)).toBeCloseTo(0, 6);
+    expect(result.discarded).toBe(0);
+  });
+
+  it('drops an outlier more than 90 degrees from the rest', () => {
+    const result = combineAngles([10, 12, 11, 170]);
+    expect(result.mean).toBeCloseTo(11, 0);
+    expect(result.count).toBe(3);
+    expect(result.discarded).toBe(1);
+  });
+
+  it('returns zero for no measurements at all', () => {
+    const result = combineAngles([]);
+    expect(result.mean).toBe(0);
+    expect(result.count).toBe(0);
+    expect(result.discarded).toBe(0);
   });
 });
 
@@ -286,6 +331,47 @@ describe('diurnal parallax', () => {
       expect(shifted.altitude).toBeLessThanOrEqual(alt);
       expect(shifted.azimuth).toBe(123);
     }
+  });
+});
+
+describe('compass calibration staleness', () => {
+  const DAY_MS = 86400000;
+
+  it('matches a known great-circle distance', () => {
+    // Bengaluru to London, a commonly-quoted value near 7,900 km.
+    const km = greatCircleDistanceKm(12.9716, 77.5946, 51.5074, -0.1278);
+    expect(km).toBeGreaterThan(7700);
+    expect(km).toBeLessThan(8100);
+  });
+
+  it('is zero for the same point', () => {
+    expect(greatCircleDistanceKm(12.97, 77.59, 12.97, 77.59)).toBeCloseTo(0, 6);
+  });
+
+  it('is not stale right after being measured, in the same place', () => {
+    const measured = { atMs: 0, lat: 12.97, lon: 77.59 };
+    const now = { atMs: DAY_MS, lat: 12.97, lon: 77.59 };
+    expect(isCalibrationStale(measured, now)).toBe(false);
+  });
+
+  it('goes stale with age alone', () => {
+    const measured = { atMs: 0, lat: 12.97, lon: 77.59 };
+    const now = { atMs: 20 * DAY_MS, lat: 12.97, lon: 77.59 };
+    expect(isCalibrationStale(measured, now)).toBe(true);
+  });
+
+  it('goes stale with distance alone, even measured moments ago', () => {
+    const measured = { atMs: 0, lat: 12.97, lon: 77.59 };
+    // Bengaluru to Chennai, roughly 290 km -- well past the 20 km threshold.
+    const now = { atMs: 60000, lat: 13.0827, lon: 80.2707 };
+    expect(isCalibrationStale(measured, now)).toBe(true);
+  });
+
+  it('stays fresh for a short walk shortly after calibrating', () => {
+    const measured = { atMs: 0, lat: 12.9716, lon: 77.5946 };
+    // About 1 km away, an hour later.
+    const now = { atMs: 3600000, lat: 12.98, lon: 77.6 };
+    expect(isCalibrationStale(measured, now)).toBe(false);
   });
 });
 

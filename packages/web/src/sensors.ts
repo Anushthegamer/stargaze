@@ -250,6 +250,75 @@ function fovFromTrack(stream: MediaStream): number | null {
   return null;
 }
 
+/* ------------------------------------------------------------------ *
+ * Raw magnetic field strength
+ * ------------------------------------------------------------------ */
+
+interface GenericSensorMagnetometer {
+  x: number | null;
+  y: number | null;
+  z: number | null;
+  start(): void;
+  stop(): void;
+  addEventListener(type: 'reading' | 'error', listener: () => void): void;
+}
+
+/**
+ * Raw magnetometer field strength, where the browser exposes it -- the
+ * Generic Sensor API's Magnetometer interface, Chrome on Android only.
+ * Unsupported on iOS Safari and desktop entirely, and even where it exists it
+ * needs a permissions-policy allowing it, which same-origin pages get by
+ * default but an embedder could still block.
+ *
+ * Every failure mode -- unsupported, blocked, no hardware, permission denied
+ * -- looks the same to the caller: `start` returns false and no readings
+ * arrive, so whatever depends on this (magnetic-interference detection) just
+ * does not activate rather than erroring. This is a real physical
+ * measurement in microtesla, unlike the fused heading `DeviceOrientationEvent`
+ * exposes -- the two are not interchangeable.
+ */
+export class MagnetometerSource {
+  private sensor: GenericSensorMagnetometer | null = null;
+
+  static get supported(): boolean {
+    return typeof window !== 'undefined' && 'Magnetometer' in window;
+  }
+
+  start(onReading: (microtesla: number) => void): boolean {
+    if (!MagnetometerSource.supported) return false;
+
+    try {
+      const Magnetometer = (
+        window as unknown as {
+          Magnetometer: new (options: { frequency: number }) => GenericSensorMagnetometer;
+        }
+      ).Magnetometer;
+      const sensor = new Magnetometer({ frequency: 2 });
+
+      sensor.addEventListener('reading', () => {
+        onReading(Math.hypot(sensor.x ?? 0, sensor.y ?? 0, sensor.z ?? 0));
+      });
+      // A permission grant does not guarantee readings ever arrive -- if the
+      // hardware genuinely refuses, this is the only signal of it.
+      sensor.addEventListener('error', () => this.stop());
+
+      sensor.start();
+      this.sensor = sensor;
+      return true;
+    } catch {
+      // SecurityError (permissions-policy), NotAllowedError (permission
+      // denied), or a browser that defines the class but refuses to
+      // construct it. All the same to the caller.
+      return false;
+    }
+  }
+
+  stop(): void {
+    this.sensor?.stop();
+    this.sensor = null;
+  }
+}
+
 /** Whether the page is in a context where sensors are allowed at all. */
 export function isSecureContextForSensors(): boolean {
   // Camera, geolocation and motion all require a secure context. On a LAN this
