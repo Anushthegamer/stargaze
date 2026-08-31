@@ -45,6 +45,11 @@ export async function requestNativeCamera(): Promise<NativePermission> {
 
   try {
     const { Camera } = await import('@capacitor/camera');
+    // Check before asking: a permission Android already granted last session
+    // should never trigger a second system dialog.
+    const current = await Camera.checkPermissions();
+    if (current.camera === 'granted') return 'granted';
+
     const result = await Camera.requestPermissions({ permissions: ['camera'] });
     return result.camera === 'granted' ? 'granted' : 'denied';
   } catch {
@@ -60,6 +65,9 @@ export async function requestNativeLocation(): Promise<NativePermission> {
 
   try {
     const { Geolocation } = await import('@capacitor/geolocation');
+    const current = await Geolocation.checkPermissions();
+    if (current.location === 'granted' || current.coarseLocation === 'granted') return 'granted';
+
     const result = await Geolocation.requestPermissions({ permissions: ['location'] });
     return result.location === 'granted' || result.coarseLocation === 'granted'
       ? 'granted'
@@ -69,14 +77,6 @@ export async function requestNativeLocation(): Promise<NativePermission> {
   }
 }
 
-/**
- * Read the position through the native plugin.
- *
- * The WebView's own `navigator.geolocation` works, but routes through a
- * Google Play Services path that can hang indefinitely on a device with no
- * network. The plugin fails fast instead, which matters for an app whose whole
- * point is working in a field.
- */
 /**
  * Start Android's hardware-fused rotation-vector sensor, where it exists.
  *
@@ -103,6 +103,14 @@ export async function startRotationVector(
   }
 }
 
+/**
+ * Read the position through the native plugin.
+ *
+ * The WebView's own `navigator.geolocation` works, but routes through a
+ * Google Play Services path that can hang indefinitely on a device with no
+ * network. The plugin fails fast instead, which matters for an app whose whole
+ * point is working in a field.
+ */
 export async function nativePosition(): Promise<{
   latitude: number;
   longitude: number;

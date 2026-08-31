@@ -80,8 +80,30 @@ export async function requestPosition(): Promise<Position | null> {
 
 type OrientationListener = (sample: OrientationSample) => void;
 
-interface IosDeviceOrientationEvent {
+interface GestureGatedDeviceOrientationEvent {
   requestPermission?: () => Promise<'granted' | 'denied'>;
+}
+
+/**
+ * Whether motion needs an explicit, gesture-gated prompt on this browser --
+ * true wherever `DeviceOrientationEvent.requestPermission` exists. That used
+ * to mean iOS Safari specifically; it no longer does -- confirmed present on
+ * a current desktop Chrome build too, so treat this as "whichever browser
+ * gates it today", not as a stand-in for a particular platform. There is no
+ * Permissions API entry for motion anywhere, so feature-detecting this
+ * function is the only signal available for "does asking have to happen
+ * inside a tap", on any browser that has adopted the gate.
+ *
+ * The permission it gates also does not reliably persist across sessions --
+ * a granted answer today is not a promise of one tomorrow -- so callers
+ * should treat true here as "always ask fresh", never as something to
+ * remember past this page load.
+ */
+export function motionNeedsGesture(): boolean {
+  const constructor = (
+    typeof window === 'undefined' ? undefined : (window.DeviceOrientationEvent as unknown)
+  ) as GestureGatedDeviceOrientationEvent | undefined;
+  return typeof constructor?.requestPermission === 'function';
 }
 
 export class OrientationSource {
@@ -102,17 +124,17 @@ export class OrientationSource {
   /**
    * Ask for permission and start listening.
    *
-   * iOS requires this to be called from inside a user gesture, which is why the
-   * permission gate is one deliberate button rather than something that runs on
-   * load.
+   * Wherever motionNeedsGesture() is true, this has to be called from inside a
+   * user gesture -- which is why the permission gate is one deliberate button
+   * rather than something that runs on load.
    */
   async start(listener: OrientationListener): Promise<PermissionState> {
     if (!OrientationSource.supported) return 'unsupported';
 
-    const constructor = window.DeviceOrientationEvent as unknown as IosDeviceOrientationEvent;
-    if (typeof constructor?.requestPermission === 'function') {
+    if (motionNeedsGesture()) {
+      const constructor = window.DeviceOrientationEvent as unknown as GestureGatedDeviceOrientationEvent;
       try {
-        const outcome = await constructor.requestPermission();
+        const outcome = await constructor.requestPermission?.();
         if (outcome !== 'granted') return 'denied';
       } catch {
         // Thrown when not called from a gesture. Treat as a refusal rather than

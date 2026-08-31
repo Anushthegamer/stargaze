@@ -28,6 +28,7 @@ import { loadSkyData, type SkyData } from './data.js';
 import {
   DEFAULT_POSITION,
   MagnetometerSource,
+  motionNeedsGesture,
   OrientationSource,
   primaryPointerIsCoarse,
   requestCamera,
@@ -196,6 +197,46 @@ class StarGaze {
     this.onResize();
     this.updateSky(true);
     requestAnimationFrame(() => this.tick());
+
+    // A returning visitor who already granted everything this profile needs
+    // should not have to tap through the gate again. Motion is the one
+    // exception: wherever it needs a gesture-gated prompt, that prompt cannot
+    // fire outside a tap, and its grant does not reliably persist anyway --
+    // see motionNeedsGesture's own doc comment.
+    if (!motionNeedsGesture() && (await this.everythingAlreadyGranted())) {
+      void this.requestEverything();
+    }
+  }
+
+  /**
+   * Checks actual OS/browser-level grants via the Permissions API, not
+   * anything this app remembered itself -- a permission can be revoked
+   * outside the app, and only the platform knows the current truth.
+   */
+  private async everythingAlreadyGranted(): Promise<boolean> {
+    if (!('permissions' in navigator)) return false;
+
+    try {
+      const location = await navigator.permissions.query({ name: 'geolocation' });
+      if (location.state !== 'granted') return false;
+    } catch {
+      return false;
+    }
+
+    if (primaryPointerIsCoarse()) {
+      try {
+        // Not every browser can query 'camera' (Firefox, notably) -- treated
+        // as "can't confirm it's granted", the same as any other unsure case.
+        const camera = await navigator.permissions.query({
+          name: 'camera' as PermissionName,
+        });
+        if (camera.state !== 'granted') return false;
+      } catch {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /* ---------------------------------------------------------------- *
@@ -221,8 +262,9 @@ class StarGaze {
     this.shell.enableButton.disabled = true;
     this.shell.enableButton.textContent = 'Asking…';
 
-    // Motion first, and in the same gesture: iOS only grants it from inside a
-    // user gesture, and an await on anything else loses that.
+    // Motion first, and in the same gesture: wherever it needs one, this is
+    // only granted from inside a user gesture, and an await on anything else
+    // loses that.
     const motion = await this.orientation.start((sample) => {
       this.latest = sample;
       if (!sample.absolute) this.permissions.motion = 'granted';
@@ -781,6 +823,57 @@ class StarGaze {
       this.timeOffsetMs = hours * 3600000;
       s.timeValue.textContent = hours === 0 ? 'now' : `${hours > 0 ? '+' : ''}${hours}h`;
       this.updateSky(true);
+    });
+
+    this.wirePermissionRecovery();
+  }
+
+  /**
+   * Lets a revoked or skipped permission be asked for again from here,
+   * without clearing site data or reinstalling. Motion isn't offered a
+   * button of its own: the mode toggle in the nav bar already re-attempts it
+   * every time it is pressed from drag mode, so a second control here would
+   * just be the same recovery path wearing a different label. Location's
+   * equivalent is "Use my location" above, already present. Camera is the
+   * one permission with no existing way back in, which is what this adds --
+   * and only on a device where a camera view makes sense at all.
+   */
+  private wirePermissionRecovery(): void {
+    const s = this.shell;
+
+    if (!primaryPointerIsCoarse()) {
+      s.permissionsSection.style.display = 'none';
+      return;
+    }
+
+    s.cameraPermissionStatus.textContent =
+      this.permissions.camera === 'granted' ? 'On' : 'Off';
+
+    s.enableCameraButton.addEventListener('click', async () => {
+      s.enableCameraButton.disabled = true;
+      const camera = await requestCamera();
+      s.enableCameraButton.disabled = false;
+      this.permissions.camera = camera.state;
+      s.cameraPermissionStatus.textContent = camera.state === 'granted' ? 'On' : 'Off';
+
+      if (!camera.stream) {
+        this.shell.toast(
+          camera.state === 'denied'
+            ? 'Camera permission is denied at the browser or OS level -- it has to be re-enabled there, not just here.'
+            : 'Camera unavailable.',
+          4200,
+        );
+        return;
+      }
+
+      this.shell.video.srcObject = camera.stream;
+      await this.shell.video.play().catch(() => undefined);
+      this.shell.video.style.display = 'block';
+      if (camera.fov) {
+        this.settings.fov = camera.fov;
+        saveSettings(this.settings);
+      }
+      this.shell.toast('Camera enabled.', 2400);
     });
   }
 

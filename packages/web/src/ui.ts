@@ -75,6 +75,10 @@ export interface Shell {
   latInput: HTMLInputElement;
   lonInput: HTMLInputElement;
   useGpsButton: HTMLButtonElement;
+  permissionsSection: HTMLElement;
+  cameraPermissionRow: HTMLElement;
+  cameraPermissionStatus: HTMLElement;
+  enableCameraButton: HTMLButtonElement;
 
   setStatus(text: string): void;
   setPermission(which: 'camera' | 'location' | 'motion', state: PermissionState): void;
@@ -264,6 +268,23 @@ export function buildShell(root: HTMLElement): Shell {
           </button>
         </div>
 
+        <div id="permissions-section" style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+          <span class="cap">Permissions</span>
+          <p class="help" style="line-height:1.5;margin:8px 0 0">
+            Turned something off by mistake, or changed your mind? Ask again here --
+            no need to clear site data or reinstall.
+          </p>
+          <div id="camera-permission-row" class="row">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <b style="font-size:14.5px;font-weight:500">Camera</b>
+              <span class="help" id="camera-permission-status">Not requested</span>
+            </div>
+            <button class="secondary" id="btn-enable-camera" type="button" style="margin-top:0;width:auto;padding:0 16px;height:38px">
+              Enable
+            </button>
+          </div>
+        </div>
+
         <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
           <span class="cap">Time travel</span>
           <div class="field">
@@ -375,6 +396,10 @@ export function buildShell(root: HTMLElement): Shell {
     latInput: pick<HTMLInputElement>('lat'),
     lonInput: pick<HTMLInputElement>('lon'),
     useGpsButton: pick<HTMLButtonElement>('use-gps'),
+    permissionsSection: pick('permissions-section'),
+    cameraPermissionRow: pick('camera-permission-row'),
+    cameraPermissionStatus: pick('camera-permission-status'),
+    enableCameraButton: pick<HTMLButtonElement>('btn-enable-camera'),
 
     setStatus(text) {
       pick('status').textContent = text;
