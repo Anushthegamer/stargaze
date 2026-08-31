@@ -443,7 +443,7 @@ class StarGaze {
     this.shell.tonightButton.addEventListener('click', () => {
       if (!this.frame) return;
       const entries = tonight(this.frame, this.data);
-      this.shell.openTonight(entries, skyCaption(this.frame, entries.length), (entry) =>
+      this.shell.openTonight(entries, skyCaption(this.frame, entries), (entry) =>
         this.goTo(entry),
       );
     });

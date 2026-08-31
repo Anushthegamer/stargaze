@@ -245,14 +245,20 @@ export class SkyRenderer {
       // Brightness spans a factor of 100 over five magnitudes; radius is
       // deliberately compressed against that, or Sirius becomes a disc.
       const radius = Math.max(0.55, (2.9 - 0.42 * magnitude) * Math.sqrt(zoom));
-      const alpha = Math.max(0.28, Math.min(1, 1.15 - magnitude * 0.14));
+      // Washed out by the sky's own brightness (see visibility.ts): still
+      // drawn, not silently dropped, just dim -- "there, but you won't see
+      // it" rather than a marker over what looks like empty sky.
+      const washedOut = magnitude > frame.limitingMagnitude;
+      const alpha =
+        Math.max(0.28, Math.min(1, 1.15 - magnitude * 0.14)) * (washedOut ? 0.3 : 1);
 
       const { r, g, b } = colorFromBV(ci[i] as number);
       const color = `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},`;
 
       // Bright stars get a halo. It is not decoration: it is what makes a
-      // first-magnitude star read as brighter rather than merely bigger.
-      if (magnitude < 2.2) {
+      // first-magnitude star read as brighter rather than merely bigger. A
+      // washed-out star has already been asked to look unremarkable.
+      if (magnitude < 2.2 && !washedOut) {
         const glow = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius * 4.5);
         glow.addColorStop(0, `${color}${(alpha * 0.5).toFixed(3)})`);
         glow.addColorStop(1, `${color}0)`);
@@ -302,6 +308,12 @@ export class SkyRenderer {
         object.angularDiameter > 0
           ? Math.max(4, (object.angularDiameter / 2) * (focalLength(viewport) * (Math.PI / 180)))
           : Math.max(2.6, (3.6 - 0.34 * object.magnitude) * Math.sqrt(zoom));
+
+      // The Moon stays prominent regardless of daylight -- it's the easiest
+      // thing in the sky to photograph and the best alignment target there
+      // is. Everything else dims when the sky itself washes it out.
+      const washedOut = object.name !== 'Moon' && object.magnitude > frame.limitingMagnitude;
+      ctx.globalAlpha = washedOut ? 0.35 : 1;
 
       const glow = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius * 3.2);
       glow.addColorStop(0, `${color}88`);

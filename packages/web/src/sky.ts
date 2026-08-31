@@ -16,6 +16,7 @@ import {
   createHorizontalBuffer,
   equatorialToHorizontal,
   julianDate,
+  limitingMagnitude,
   localSiderealTime,
   magneticDeclination,
   moonPosition,
@@ -62,6 +63,10 @@ export interface SkyFrame {
   when: Date;
   /** Altitude of the Sun, degrees. Negative means night. */
   sunAltitude: number;
+  /** Faintest magnitude the sky itself lets through right now -- see
+   *  limitingMagnitude. Objects fainter than this are still drawn (this is a
+   *  visibility model, not a filter) but should render de-emphasised. */
+  limitingMagnitude: number;
   jd: number;
   lst: number;
   observer: Position;
@@ -122,11 +127,14 @@ export class SkyModel {
     );
 
     const objects = this.computeObjects(jd, lst, observer, refract);
+    const sunAltitude = objects.find((object) => object.kind === 'sun')?.altitude ?? -90;
+    const moon = objects.find((object) => object.kind === 'moon');
 
     const buffer = this.buffer;
     return {
       when,
-      sunAltitude: objects.find((object) => object.kind === 'sun')?.altitude ?? -90,
+      sunAltitude,
+      limitingMagnitude: limitingMagnitude(sunAltitude, moon?.altitude ?? -90, moon?.illumination ?? 0),
       jd,
       lst,
       observer,
@@ -250,13 +258,20 @@ export interface TonightEntry {
   /** The renderer's index encoding, so tapping a row can select it. */
   index: number;
   kind: ObjectKind;
+  /** True when the sky itself is too bright to actually see this right now
+   *  -- still listed, never hidden, per the visibility model in
+   *  packages/core/src/visibility.ts. This is what "tonight" means; the
+   *  user's own magnitude-limit setting is a separate, coarser cutoff. */
+  washedOut: boolean;
 }
 
 /**
- * What is visible right now, brightest first.
+ * What is up right now, leading with what is actually observable.
  *
  * The Sun is excluded when it is up: "what can I see tonight" has an obvious
- * answer during the day and it is not a list.
+ * answer during the day and it is not a list. The Moon is never washed out --
+ * it is the easiest thing in the sky to photograph, day or night, and the
+ * best target for checking the overlay is aligned.
  */
 export function tonight(frame: SkyFrame, data: SkyData, limit = 30): TonightEntry[] {
   const entries: TonightEntry[] = [];
@@ -276,6 +291,7 @@ export function tonight(frame: SkyFrame, data: SkyData, limit = 30): TonightEntr
       azimuth: object.azimuth,
       index: -1 - index,
       kind: object.kind,
+      washedOut: object.kind === 'moon' ? false : object.magnitude > frame.limitingMagnitude,
     });
   });
 
@@ -287,34 +303,40 @@ export function tonight(frame: SkyFrame, data: SkyData, limit = 30): TonightEntr
     const name = data.names.get(hip);
     if (!name?.proper) continue;
 
+    const magnitude = frame.catalog.mag[i] as number;
     entries.push({
       label: name.proper,
       detail: name.constellation ? `Star · ${name.constellation}` : 'Star',
-      magnitude: frame.catalog.mag[i] as number,
+      magnitude,
       altitude: frame.stars.altitude[i] as number,
       azimuth: frame.stars.azimuth[i] as number,
       index: i,
       kind: 'star',
+      washedOut: magnitude > frame.limitingMagnitude,
     });
   }
 
-  entries.sort((a, b) => a.magnitude - b.magnitude);
+  // Observable-now first; washed-out entries trail, each group ordered
+  // brightest first. Mixing the two by raw magnitude would bury the useful
+  // half of the list under objects nobody can actually see right now.
+  entries.sort((a, b) => Number(a.washedOut) - Number(b.washedOut) || a.magnitude - b.magnitude);
   return entries.slice(0, limit);
 }
 
 /**
- * A line explaining what the list is showing.
- *
- * Everything in it is genuinely above the horizon, but in daylight almost none
- * of it can be seen. Saying so is more honest than filtering the list and
- * leaving the user to wonder where everything went.
+ * A line explaining what the list is showing: what's actually observable, and
+ * why the rest is not -- more honest than a caption that only counts what is
+ * above the horizon and leaves daylight or moonlight unexplained.
  */
-export function skyCaption(frame: SkyFrame, count: number): string {
-  const visible = `${count} above the horizon`;
-  if (frame.sunAltitude > 0) return `${visible} · daylight, so almost none are visible`;
-  if (frame.sunAltitude > -6) return `${visible} · twilight, only the brightest will show`;
-  if (frame.sunAltitude > -18) return `${visible} · the sky is not fully dark yet`;
-  return `${visible} · dark sky`;
+export function skyCaption(frame: SkyFrame, entries: TonightEntry[]): string {
+  const washedOut = entries.reduce((count, entry) => count + (entry.washedOut ? 1 : 0), 0);
+  const observable = entries.length - washedOut;
+  if (washedOut === 0) return `${observable} observable now`;
+
+  // Below -18 degrees the sky is as dark as this model gets, so anything
+  // still washed out there is the Moon's doing, not the Sun's.
+  const reason = frame.sunAltitude > 0 ? 'daylight' : frame.sunAltitude > -18 ? 'twilight' : 'moonlight';
+  return `${observable} observable now · ${washedOut} more washed out by ${reason}`;
 }
 
 export interface ObjectDetail {
@@ -491,6 +513,7 @@ export function search(
         azimuth: object.azimuth,
         index: -1 - index,
         kind: object.kind,
+        washedOut: object.kind === 'moon' ? false : object.magnitude > frame.limitingMagnitude,
       },
     });
   });
@@ -523,6 +546,7 @@ export function search(
         azimuth: frame.stars.azimuth[i] as number,
         index: i,
         kind: 'star',
+        washedOut: (frame.catalog.mag[i] as number) > frame.limitingMagnitude,
       },
     });
   }
@@ -565,6 +589,7 @@ export function search(
         azimuth: frame.stars.azimuth[brightest] as number,
         index: brightest,
         kind: 'star',
+        washedOut: (frame.catalog.mag[brightest] as number) > frame.limitingMagnitude,
       },
     });
   }
