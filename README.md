@@ -16,12 +16,15 @@ that do this well don't look at the sky at all. They ask three sensors:
 Those three fully determine your view. From there it is spherical trigonometry
 against a star catalogue: cheap, exact, and 60fps on a budget phone.
 
+**[Try it in a browser](https://anushthegamer.github.io/stargaze/)** — the same
+bundle the Android app wraps. Drag to look around; allow sensors on a phone.
+
 ## Status
 
 | Step | State |
 |---|---|
 | `tools/` — Python data pipeline | done |
-| `packages/core` — astronomy, verified against JPL | done, 78 tests |
+| `packages/core` — astronomy, verified against JPL | done, 118 tests |
 | `packages/web` — camera AR client | done |
 | `server/` — HTTPS host for LAN testing | done |
 | `android/` — Capacitor wrapper | done, APK builds |
@@ -86,12 +89,11 @@ on a real phone.
 
 Listed here rather than left implied, so nothing looks finished that isn't.
 
-- **A native rotation-vector plugin.** The WebView's `DeviceOrientation` is used
-  for now. If it proves too coarse on real hardware, Android's
-  `TYPE_ROTATION_VECTOR` fuses gyroscope, accelerometer and magnetometer in
-  hardware and is steadier. `basisFromQuaternion` in `orientation.ts` already
-  accepts exactly what that sensor produces, so the plugin drops in behind the
-  existing interface without touching anything else.
+- **The native rotation-vector plugin is unverified.** It is written and wired
+  in — Android's `TYPE_ROTATION_VECTOR` fuses gyroscope, accelerometer and
+  magnetometer in hardware, feeding `basisFromQuaternion` in `orientation.ts`
+  — but no machine here has a magnetometer, so it has never produced a reading.
+  Treat the first run on a real phone as the first evidence it works at all.
 - **Nothing has run on real hardware yet.** Everything here is verified against
   JPL and against physical facts, but the compass is the one part that can only
   be judged in the field.
@@ -152,8 +154,8 @@ Positional astronomy is full of sign flips and degree/radian slips that produce
 answers which look plausible and are wrong. Two things guard against that.
 
 **The ephemeris is checked against JPL Horizons.** `tools/fetch_reference.py`
-pulls real positions for the Sun, Moon and planets at four epochs spread across
-several years; the tests assert against them offline. Worst-case error:
+pulls real positions for the Sun, Moon and planets at six epochs spanning
+2021-2045; the tests assert against them offline. Worst-case error:
 
 | Body | Error | Body | Error |
 |---|---|---|---|

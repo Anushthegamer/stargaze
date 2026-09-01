@@ -129,6 +129,27 @@ capture at each required size — see `store/screenshots/`:
 
 Each set: the sky view with the compass/readouts HUD, and the Tonight list.
 
+## Privacy policy URL
+
+Play requires a resolvable privacy policy URL for any app requesting camera
+or location. Paste this into the Play Console listing:
+
+```
+https://anushthegamer.github.io/stargaze/privacy.html
+```
+
+It is a static page in the web build (`packages/web/public/privacy.html`), so
+it redeploys with the app and cannot drift out of step with what the code
+actually does.
+
+## Live web build
+
+The same bundle the Android app wraps, running in a browser:
+
+```
+https://anushthegamer.github.io/stargaze/
+```
+
 ## What only the account holder can do
 
 This file and the icon/screenshot work in this repository get the listing
@@ -136,9 +157,6 @@ content ready. The following need a human with the Play Console account and
 cannot be done from here:
 
 - A Google Play Developer account (one-time registration fee).
-- A privacy policy hosted at a real, stable URL — mandatory for an app
-  requesting camera and location. Not fabricated here; needs an actual
-  page, e.g. on the project's GitHub Pages or README-linked site.
 - Completing the content rating questionnaire in Play Console.
 - Completing the Data Safety form in Play Console (this file gives the
   exact answers, but the form itself has to be filled in there).
