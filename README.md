@@ -6,6 +6,11 @@ Point your phone at the night sky and it tells you what you are looking at.
 bundle the Android app wraps. Drag to look around; on a phone, allow sensors and
 it follows where you point.
 
+<p align="center">
+  <img src="store/screenshots/phone/1-sky.png" alt="The sky view: constellation figures, a compass strip, and altitude/azimuth readouts" width="300">
+  <img src="store/screenshots/phone/2-tonight.png" alt="The Tonight list, ordered by what is actually observable right now" width="300">
+</p>
+
 No image recognition. A phone photo of the night sky is a noisy black square
 with a few faint dots in it — there is nothing there for a vision model to work
 with. The apps that do this well don't look at the sky at all. They ask three
