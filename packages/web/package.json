@@ -11,6 +11,9 @@
     "dev:https": "vite --host --config vite.https.config.ts"
   },
   "dependencies": {
+    "@capacitor/camera": "^8.2.3",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/geolocation": "^8.2.2",
     "@stargaze/core": "*"
   },
   "devDependencies": {
