@@ -1,7 +1,7 @@
 /**
  * Loading the generated catalogues.
  *
- * Five small JSON files, ~44 KB gzipped between them. They are fetched once and
+ * Five small JSON files, ~57 KB gzipped between them. They are fetched once and
  * parsed into typed arrays; after that the app never touches the network again,
  * which is the point -- it is used in fields, not on wifi.
  */
