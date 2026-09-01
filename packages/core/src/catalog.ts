@@ -1,10 +1,10 @@
 /**
  * The star catalogue, in a shape built for the render loop.
  *
- * Typed parallel arrays rather than an array of objects: 2,850 stars have to be
- * transformed every time the sky is recomputed, and this keeps the whole
- * catalogue in a handful of contiguous buffers instead of 2,850 scattered
- * objects for the garbage collector to trip over.
+ * Typed parallel arrays rather than an array of objects: the whole catalogue
+ * has to be transformed every time the sky is recomputed, and this keeps it in
+ * a handful of contiguous buffers instead of a thousand-odd scattered objects
+ * for the garbage collector to trip over.
  */
 
 import { toDegrees, toRadians } from './angles.js';
