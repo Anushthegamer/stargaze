@@ -52,6 +52,29 @@ expected, not a failure — accept it and the sensors start working.
 The [live site](https://anushthegamer.github.io/stargaze/) sidesteps this
 entirely, as does the Android build: the WebView serves from `https://localhost`.
 
+### First run on a real phone
+
+Nothing here has been confirmed on hardware with a magnetometer. Worth walking
+through in order, because a failure early on explains the ones after it:
+
+1. **Does a heading appear at all?** The `AZ` readout should change as you turn.
+   If it stays fixed, this device is not reporting an absolute heading.
+2. **Does it say so when it can't?** With no compass the app should offer drag
+   mode and say why — not sit there looking frozen.
+3. **Does the camera show?** Rear camera only. A selfie view means the wrong
+   camera was picked.
+4. **Does the overlay sit on the Moon?** The one target you can check by eye.
+   Expect it to be off by degrees before calibrating — that is the compass, not
+   the astronomy.
+5. **Does calibration help?** Settings → *Calibrate on a known star*, sight the
+   Moon or a bright planet, confirm. The overlay should visibly tighten.
+6. **Do permissions ask once?** Close the app fully, reopen. It should not
+   re-prompt for anything already granted.
+7. **Does it survive rotation?** Turn the phone to landscape. The sky should
+   stay put; only the chrome should move.
+8. **Does it work in airplane mode?** Enable it, force-close, reopen. Everything
+   should still load — this is the whole point of the app.
+
 ## Android
 
 ```bash
