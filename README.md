@@ -3,177 +3,199 @@
 **Point your phone at the night sky and it tells you what you're looking at.**
 
 [**Try it now →**](https://ramskandh-thirandasu.github.io/stargaze/) · works in any
-browser, installs as an app, runs offline
+browser, installs like an app, and keeps working with no signal
 
 <p align="center">
-  <img src="store/screenshots/phone/1-sky.png" alt="The sky view: constellation figures, a compass strip, and altitude and azimuth readouts" width="300">
-  <img src="store/screenshots/phone/2-tonight.png" alt="The Tonight list, ordered by what is actually observable right now" width="300">
+  <img src="store/screenshots/phone/1-sky.png" alt="The sky view: constellation figures, a compass strip, and readouts showing where the phone is pointed" width="300">
+  <img src="store/screenshots/phone/2-tonight.png" alt="The Tonight list, ordered by what is actually visible right now" width="300">
 </p>
 
-## How it works
+You've probably looked up, seen something bright, and wondered what it was.
+Point your phone at it and StarGaze names it — the star, the planet, or the
+constellation it belongs to.
 
-No image recognition. A phone photo of the night sky is a noisy black square
-with a few faint dots in it — there's nothing there for a vision model to work
-with. The apps that do this well don't look at the sky at all. They ask three
-sensors:
+No account, no sign-up, nothing to install if you don't want to. Open the link
+and it works.
 
-- **GPS** — your latitude and longitude. The stars over Bengaluru are not the
-  stars over Reykjavík.
-- **The clock** — the exact instant. The sky turns 15° an hour.
-- **Magnetometer and gyroscope** — which way the phone is pointed.
+## How does it know?
 
-Those three fully determine your view. From there it's spherical trigonometry
-against a star catalogue: cheap, exact, and it runs on a budget phone.
+Here's the surprising part: **it never looks at the sky.**
 
-Everything is computed on the device. Nothing about where you are is ever
-transmitted — there's no backend, no account, and no analytics.
+You might expect an app like this to photograph the sky and recognise it. That
+approach barely works. A phone photo of the night sky is a nearly black square
+with a few faint specks — there's almost nothing in the image to recognise.
 
-## What it shows
+So StarGaze does what astronomers have done for centuries: it *calculates*.
+Three things are enough to know exactly what's above you:
 
-Only what you could actually photograph with a phone, standing on the ground.
+| | |
+|---|---|
+| **Where you are** | The stars above India aren't the stars above Iceland. |
+| **What time it is** | The sky rotates about 15° every hour, so it looks different at 9pm than at midnight. |
+| **Which way you're pointing** | Your phone's compass and motion sensors already know this. |
 
-- **1,009 stars to magnitude 4.5** — roughly a phone's reach under a genuinely
-  dark sky. All 88 constellation figures stay complete.
-- **Five planets** — Mercury, Venus, Mars, Jupiter, Saturn. Uranus and Neptune
-  are computed and tested but never drawn: a phone can't record either, and a
-  marker over empty sky teaches you the overlay is unreliable exactly when
-  you're deciding whether to trust it.
-- **The Moon**, with its current phase — the easiest thing up there to
-  photograph, and the best target for checking the overlay is aligned.
+Feed those three into some geometry and you know precisely which star sits at
+any point in the sky. It's fast, it's exact, and it needs no internet.
 
-Objects that are up but washed out by daylight or moonlight are still drawn,
-dimmed, and listed as washed out rather than silently dropped. "There, but you
-won't see it" is useful information; vanishing is not.
+**Everything is worked out on your phone.** Your location never leaves the
+device — there's no server, no account, and no tracking of any kind.
 
-## Features
+## What you'll see
 
-- **Works completely offline.** The catalogue, constellation figures, planetary
-  elements and geomagnetic model are all bundled — five JSON files, ~57 KB
-  gzipped. Nothing is fetched after install.
-- **Live camera view** behind the overlay, so you can line the markers up
-  against the real sky. Entirely optional.
-- **Compass calibration.** Phone magnetometers run 5–15° out. Sight a star you
-  can actually see, confirm, and the offset is stored — up to three sightings
-  combined, expiring after 14 days or a 20 km move.
-- **Magnetic interference warning** when the measured field disagrees with the
-  IGRF model, because a compass next to a speaker is not to be trusted.
-- **Search and a Tonight list**, ordered by what's genuinely observable now.
-- **Drag mode** — works with no permissions at all, on any device.
+Only things you could genuinely spot yourself, standing outside.
 
-## Run it
+- **1,009 stars.** The brightest ones — roughly what a phone camera can pick up
+  under a properly dark sky. All 88 constellations are drawn complete.
+- **Five planets** — Mercury, Venus, Mars, Jupiter and Saturn. The ones visible
+  to the naked eye, as they have been for all of recorded history.
+- **The Moon**, showing its current phase.
+
+Uranus and Neptune are deliberately left out. The app knows exactly where they
+are, but they're too faint to see, and a marker floating over blank sky would
+just teach you not to trust the app.
+
+For the same reason, anything technically above the horizon but drowned out by
+daylight or a bright Moon is shown dimmed and labelled, rather than quietly
+hidden. Knowing something is *there but invisible* is more useful than it
+silently vanishing.
+
+## What it can do
+
+- **Works fully offline.** The whole star catalogue ships inside the app —
+  about 57 KB, smaller than a single photo. Handy, given stargazing tends to
+  happen away from towns and signal.
+- **Camera view.** See the real sky through your camera with the star names
+  drawn on top. Optional — it works fine without.
+- **Compass calibration.** Phone compasses are genuinely inaccurate, typically
+  off by 5–15°. Point at a bright star you can already identify, tap confirm,
+  and the app corrects itself.
+- **Interference warning.** Metal, speakers and cars throw compasses off badly.
+  When the app detects this, it tells you instead of quietly being wrong.
+- **Search** for anything by name, and a **Tonight** list of what's actually
+  worth looking at right now.
+- **Drag mode.** No sensors, no permissions, no phone required — just drag to
+  look around. Works on a laptop.
+
+## Try it yourself
+
+The easiest way is [the live version](https://ramskandh-thirandasu.github.io/stargaze/) —
+nothing to install.
+
+To run the code:
 
 ```bash
 npm install
 npm test          # 118 tests
-npm run dev       # http://localhost:5173
+npm run dev       # then open http://localhost:5173
 ```
 
-Rebuilding the catalogues is optional — their output is committed:
+<details>
+<summary><b>Running it on your phone during development</b></summary>
+
+Phone browsers only allow camera, location and motion on a **secure (https)
+connection**, and they fail silently otherwise — you just get a page that never
+asks permission, with no error explaining why.
 
 ```bash
-npm run data      # Python 3.9+, no pip packages
+npm run serve     # serves over https and prints your network address
 ```
 
-### On a phone
+Your phone will warn about the certificate once. That's expected — accept it.
 
-Camera, location and motion all require a **secure context**, and fail silently
-without one — `http://192.168.1.42:5173` is not one.
+</details>
 
-```bash
-npm run serve     # HTTPS with a self-signed cert, prints every LAN address
-```
-
-The phone warns about the certificate once. That's expected; accept it. The
-[live site](https://ramskandh-thirandasu.github.io/stargaze/) sidesteps this
-entirely, as does the Android build.
-
-### Android
+<details>
+<summary><b>Building the Android app</b></summary>
 
 ```bash
 npm run android:sync
 npm run android:open
 ```
 
-**Needs JDK 21**, and only 21 — Gradle 8.x (pinned by Capacitor's AGP) rejects
-newer ones with `Unsupported class file major version`, including the JDK
-Android Studio bundles. The debug APK lands at
+You'll need **JDK 21 specifically**. Newer versions fail with
+`Unsupported class file major version`, including the one Android Studio ships
+with. The debug app is built to
 `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-## On being right
+</details>
 
-Positional astronomy is full of sign flips and degree/radian slips that produce
-answers which look plausible and are wrong. Two things guard against that.
+## How accurate is it?
 
-**The ephemeris is checked against JPL Horizons** at six epochs spanning
-2021–2045. Measured worst case:
+Short answer: **the astronomy is far more accurate than your phone's compass**,
+so the compass is what limits it.
 
-| Body | Error | Body | Error |
+Positions are checked automatically against [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/),
+NASA's own reference system, at six dates spanning 2021–2045.
+
+Errors are measured in **arcseconds** — an arcsecond is 1/3600th of a degree.
+For scale, the full Moon is about **1,800 arcseconds** wide.
+
+| Object | Error | Object | Error |
 |---|---|---|---|
 | Sun | 13.5″ | Jupiter | 368.3″ |
 | Mercury | 21.7″ | Saturn | 435.0″ |
 | Venus | 18.0″ | Uranus\* | 110.2″ |
 | Mars | 31.7″ | Neptune\* | 34.4″ |
-| Moon (topocentric) | 16.5″ | | |
+| Moon | 16.5″ | | |
 
-\* Computed and tested but never drawn.
+\* Calculated and tested, but never drawn — see above.
 
-Every one is inside JPL's published bound for this element set — they document
-400″ for Jupiter and 600″ for Saturn, because a fixed ellipse can't express the
-giant planets perturbing each other. For scale: a phone compass is off by
-**5–15°**, or 18,000–54,000″. The ephemeris is nowhere near the limiting factor.
+Even the worst of these is a quarter of a Moon-width. Meanwhile a phone compass
+is off by 5–15° — that's **18,000 to 54,000 arcseconds**, hundreds of times
+larger. This is why the calibration feature exists, and why the app is honest
+about its compass rather than pretending.
 
-Applied on top of the catalogue positions: atmospheric refraction, Delta-T,
-proper motion, nutation, annual aberration and topocentric parallax.
+<details>
+<summary><b>For the curious: how bugs get caught here</b></summary>
 
-**The geometry is checked against physical facts.** Polaris sits at your
-latitude. Things rise in the east. Lie the phone flat and the camera looks at
-the floor. Tap a pixel and unprojecting it returns the direction that projects
-back onto it.
+Astronomy code fails in a nasty way — it returns answers that look completely
+reasonable and are wrong. So besides comparing against NASA, the tests check
+things you can verify by reasoning about the real world: Polaris should sit at
+your latitude, things should rise in the east, and lying the phone flat should
+point the camera at the floor.
 
-That second set isn't ceremony — it caught three real bugs:
+That second kind of test caught three real bugs:
 
-- The up axis was computed as `forward × right` instead of `right × forward`,
-  rendering the entire sky mirrored. It passed an orthonormality check, because
-  a down-vector is still a perfectly good orthonormal basis vector.
-- The magnetic model used Gauss-normalised Legendre functions where IGRF
-  assumes Schmidt quasi-normalisation — **24° out**.
-- Planets were rotated into equatorial coordinates with the obliquity of date
-  rather than of J2000, quietly mixing reference frames.
+- Two directions were combined in the wrong order, rendering the entire sky
+  **mirrored**. It passed the obvious mathematical check, because a
+  wrong-but-consistent answer still looks consistent.
+- The Earth's magnetic field model used the wrong normalisation convention,
+  putting the compass correction **24° out**.
+- Planet positions mixed two different reference frames that look nearly
+  identical but drift apart over time.
 
-Because fixtures only prove a moment in time, a monthly workflow re-checks the
-ephemeris against a **fresh** Horizons epoch, re-verifies IGRF against NOAA's
-published values, and hash-pins the upstream catalogues — opening an issue on
-failure rather than failing quietly.
+Because a test only proves things worked on the day it was written, a monthly
+job re-checks everything against fresh NASA data and opens an issue if anything
+has drifted.
 
-## Known limits
+</details>
 
-- **The compass is the weak link**, by a wide margin, and no amount of software
-  fixes a magnetometer. Indoors it's worthless — desk metal and building steel
-  pull it by tens of degrees, which is what the interference warning is for.
-  Outdoors, calibration gets it usable.
-- Magnetic declination is interpolated on a 5° grid, stops at ±85° latitude, and
-  is flagged stale past IGRF-14's 2030 forecast window rather than extrapolated
-  quietly.
-- Moon rise/set assumes a fixed position across the day, so those times are good
-  to a few minutes rather than seconds.
-- No deep-sky objects, and Saturn's rings aren't modelled.
+## Honest limitations
 
-## Layout
+- **The compass is the weak point**, and no software can fix a magnetometer.
+  Indoors it's close to useless — metal furniture and building steel pull it
+  wildly off. Outside, after calibrating, it's good.
+- The magnetic correction stops working properly very near the poles, and is
+  flagged as out-of-date after 2030 rather than silently guessing.
+- Moonrise and moonset times are accurate to a few minutes, not seconds.
+- No galaxies or nebulae, and Saturn's rings aren't drawn.
+
+## Project layout
 
 ```
-tools/       Build-time Python: catalogues in, JSON out. Never runs in the app.
+tools/       Python scripts that prepare the star data. Never run in the app.
 packages/
-  core/      On-device astronomy. No DOM, no network, no state. 118 tests.
-  web/       Vite PWA client. public/data/ holds the generated catalogues.
-server/      Express + a self-signed cert, for testing on a real phone.
-android/     Capacitor project wrapping the same web build.
+  core/      The astronomy maths. Pure calculation, 118 tests.
+  web/       The app itself.
+server/      A small https server for testing on a real phone.
+android/     Wraps the same app for Android.
 ```
 
 ## Credits
 
-Star and constellation data, planetary elements and the geomagnetic model are
-all free to use — see [NOTICE.md](NOTICE.md).
+Star data, constellation figures, planetary data and the magnetic field model
+all come from free, public sources — see [NOTICE.md](NOTICE.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled datasets keep their own licenses.
+MIT — see [LICENSE](LICENSE). The bundled datasets keep their own licenses.
