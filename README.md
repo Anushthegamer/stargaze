@@ -59,10 +59,24 @@ npm run android:sync    # build the web bundle and copy it into android/
 npm run android:open    # ...and open Android Studio
 ```
 
-**Needs JDK 21.** Android Studio bundles a newer JDK, and Gradle 8.14 refuses to
-run on it (`unsupported class file major version`). Capacitor pins AGP 8.x,
-which pins Gradle 8.x, so upgrading Gradle is not the way out. Point `JAVA_HOME`
-at a JDK 21 first.
+**Needs JDK 21**, and only 21. Gradle 8.x (pinned by Capacitor's AGP 8.x)
+rejects newer JDKs with `Unsupported class file major version` — 25 and 26 both
+fail, and Android Studio's bundled JBR is one of them. Upgrading Gradle is not
+the way out, since Capacitor pins the chain.
+
+Point `JAVA_HOME` at a JDK 21 and `./gradlew` works from any shell:
+
+```bash
+# one-off, or set JAVA_HOME persistently for your user
+JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug
+```
+
+The debug APK lands at `android/app/build/outputs/apk/debug/app-debug.apk`
+(~8.9 MB, the whole sky inside it). Sideload it with:
+
+```bash
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
 
 Emulators fake the magnetometer, so the compass — the one genuinely uncertain
 part of this — can only be judged on a real phone.
