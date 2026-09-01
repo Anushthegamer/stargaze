@@ -298,13 +298,4 @@ export class HeadingFilter {
     this.value = normalize360(this.value + delta * this.factor);
     return this.value;
   }
-
-  /** Drop the filter state, e.g. after the sensor is re-enabled. */
-  reset(): void {
-    this.value = null;
-  }
-
-  get current(): number | null {
-    return this.value;
-  }
 }
