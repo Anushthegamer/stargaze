@@ -76,7 +76,6 @@ export interface Shell {
   lonInput: HTMLInputElement;
   useGpsButton: HTMLButtonElement;
   permissionsSection: HTMLElement;
-  cameraPermissionRow: HTMLElement;
   cameraPermissionStatus: HTMLElement;
   enableCameraButton: HTMLButtonElement;
 
@@ -397,7 +396,6 @@ export function buildShell(root: HTMLElement): Shell {
     lonInput: pick<HTMLInputElement>('lon'),
     useGpsButton: pick<HTMLButtonElement>('use-gps'),
     permissionsSection: pick('permissions-section'),
-    cameraPermissionRow: pick('camera-permission-row'),
     cameraPermissionStatus: pick('camera-permission-status'),
     enableCameraButton: pick<HTMLButtonElement>('btn-enable-camera'),
 
