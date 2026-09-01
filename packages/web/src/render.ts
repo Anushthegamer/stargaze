@@ -65,6 +65,20 @@ const PLANET_COLOR: Record<string, string> = {
   Moon: '#f2e6ce',
 };
 
+/**
+ * Keep a centre-aligned label fully on screen.
+ *
+ * Labels are drawn centred on the object, so one near an edge gets its name
+ * sliced in half -- "Jupiter" rendering as "upiter" is not a subtle defect.
+ * Nudging it inward keeps the whole word readable; the object it belongs to
+ * is still directly below it.
+ */
+function clampLabelX(ctx: CanvasRenderingContext2D, text: string, x: number, width: number): number {
+  const half = ctx.measureText(text).width / 2;
+  const margin = 6;
+  return Math.max(half + margin, Math.min(width - half - margin, x));
+}
+
 export class SkyRenderer {
   private readonly context: CanvasRenderingContext2D;
   private width = 0;
@@ -162,7 +176,7 @@ export class SkyRenderer {
       if (!point) continue;
 
       ctx.fillStyle = label.length === 1 ? 'rgba(238,242,248,0.82)' : 'rgba(238,242,248,0.42)';
-      ctx.fillText(label, point.x, point.y - 14);
+      ctx.fillText(label, clampLabelX(ctx, label, point.x, this.width), point.y - 14);
     }
 
     ctx.restore();
@@ -334,7 +348,11 @@ export class SkyRenderer {
 
       if (options.showLabels) {
         ctx.fillStyle = 'rgba(238, 242, 248, 0.78)';
-        ctx.fillText(object.name, point.x, point.y - radius - 8);
+        ctx.fillText(
+          object.name,
+          clampLabelX(ctx, object.name, point.x, this.width),
+          point.y - radius - 8,
+        );
       }
 
       this.hits.push({

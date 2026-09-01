@@ -412,6 +412,9 @@ button {
   justify-content: space-between;
   min-height: 46px;
   gap: 16px;
+  /* Rows that carry help text grow past the minimum height, and without this
+     their explanation runs straight into the next row's heading. */
+  padding: 8px 0;
 }
 
 .field {
