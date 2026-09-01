@@ -15,7 +15,6 @@ import './styles.css';
 
 import {
   basisFromDeviceOrientation,
-  basisFromQuaternion,
   HeadingFilter,
   isCalibrationStale,
   magneticFieldIntensity,
@@ -137,7 +136,7 @@ class StarGaze {
    *  starts reporting -- Android only, and only where the hardware has that
    *  sensor. Preferred over DeviceOrientationEvent when it's running. */
   private usingNativeRotationVector = false;
-  private latestQuaternion: { x: number; y: number; z: number; w: number } | null = null;
+  private latestNative: { azimuth: number; pitch: number; roll: number } | null = null;
 
   private readonly magnetometer = new MagnetometerSource();
   private liveFieldMicrotesla: number | null = null;
@@ -289,7 +288,7 @@ class StarGaze {
     // resolves quickly (false) everywhere it does not apply, so it is worth
     // waiting for rather than racing it against the mode decision below.
     this.usingNativeRotationVector = await startRotationVector((reading) => {
-      this.latestQuaternion = reading;
+      this.latestNative = reading;
     });
 
     const position = await requestPosition();
@@ -944,10 +943,19 @@ class StarGaze {
     const declination =
       (this.frame?.declinationReliable ? this.frame.declination : 0) + this.settings.northOffset;
 
-    if (this.mode === 'sensors' && this.usingNativeRotationVector && this.latestQuaternion) {
-      // Hardware-fused already -- no JS-side smoothing on top, the same way
-      // basisFromDeviceOrientation below is trusted unsmoothed for beta/gamma.
-      return basisFromQuaternion(this.latestQuaternion, screenAngle(), declination);
+    if (this.mode === 'sensors' && this.usingNativeRotationVector && this.latestNative) {
+      // The platform already produced the orientation angles; all that is
+      // left is the convention shift. Android's azimuth runs clockwise from
+      // north, alpha runs counter-clockwise, which is the same relationship
+      // Safari's webkitCompassHeading has -- see onEvent in sensors.ts.
+      // Hardware-fused, so no JS-side smoothing on top of it.
+      return basisFromDeviceOrientation({
+        alpha: normalize360(360 - this.latestNative.azimuth),
+        beta: -this.latestNative.pitch,
+        gamma: this.latestNative.roll,
+        screenAngle: screenAngle(),
+        declination,
+      });
     }
 
     if (this.mode === 'sensors' && this.latest) {

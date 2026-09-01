@@ -116,7 +116,7 @@ export async function nativePermissionsGranted(): Promise<
  * sensor gap. See RotationVectorPlugin.java for what this is fusing.
  */
 export async function startRotationVector(
-  onReading: (reading: { x: number; y: number; z: number; w: number }) => void,
+  onReading: (reading: { azimuth: number; pitch: number; roll: number }) => void,
 ): Promise<boolean> {
   if (!isNative()) return false;
 

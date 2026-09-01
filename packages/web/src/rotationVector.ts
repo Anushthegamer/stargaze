@@ -11,10 +11,11 @@
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 export interface RotationVectorReading {
-  x: number;
-  y: number;
-  z: number;
-  w: number;
+  /** Degrees clockwise from MAGNETIC north, as SensorManager.getOrientation
+   *  reports it. Declination is applied downstream, not here. */
+  azimuth: number;
+  pitch: number;
+  roll: number;
   /** Radians, or -1 if the device does not report one. */
   accuracy: number;
 }

@@ -56,23 +56,34 @@ public class RotationVectorPlugin extends Plugin implements SensorEventListener 
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) return;
 
-        float x = event.values[0];
-        float y = event.values[1];
-        float z = event.values[2];
-        // Some devices omit the scalar component; reconstruct it rather than
-        // assume a fourth element is always present.
-        float w = event.values.length > 3
-            ? event.values[3]
-            : (float) Math.sqrt(Math.max(0.0, 1.0 - x * x - y * y - z * z));
+        // Let the platform turn the rotation vector into orientation angles.
+        // getRotationMatrixFromVector + getOrientation is the same pair every
+        // Android compass app uses; deriving the heading by hand from the
+        // quaternion means re-deriving axis conventions the framework already
+        // knows, and getting them subtly wrong.
+        //
+        // Some devices report a 5-element vector (a heading-accuracy estimate
+        // in values[4]), which getRotationMatrixFromVector rejects -- so copy
+        // the first four rather than passing event.values straight through.
+        float[] vector = new float[4];
+        System.arraycopy(event.values, 0, vector, 0, Math.min(4, event.values.length));
 
+        float[] matrix = new float[9];
+        SensorManager.getRotationMatrixFromVector(matrix, vector);
+
+        float[] orientation = new float[3];
+        SensorManager.getOrientation(matrix, orientation);
+
+        // Reported in the device's natural frame, exactly as the web
+        // DeviceOrientation event is: the display rotation is applied on the
+        // JavaScript side, which already tracks it, so remapping here would
+        // apply it twice.
         JSObject data = new JSObject();
-        data.put("x", x);
-        data.put("y", y);
-        data.put("z", z);
-        data.put("w", w);
-        // Estimated heading accuracy in radians where the device reports one;
-        // -1 means "not available", passed through for the caller to
-        // interpret rather than guessed at here.
+        data.put("azimuth", Math.toDegrees(orientation[0])); // clockwise from magnetic north
+        data.put("pitch", Math.toDegrees(orientation[1]));
+        data.put("roll", Math.toDegrees(orientation[2]));
+        // Heading accuracy in radians where the device estimates one; -1 means
+        // it does not, passed through rather than guessed at here.
         data.put("accuracy", event.values.length > 4 ? event.values[4] : -1.0);
 
         notifyListeners("reading", data);
