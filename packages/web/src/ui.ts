@@ -9,7 +9,6 @@
 import { normalize360, type CameraBasis } from '@stargaze/core';
 
 import type { ObjectDetail, SkyFrame, TonightEntry } from './sky.js';
-import type { PermissionState } from './sensors.js';
 
 const svg = (paths: string, size = 22): string =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -43,9 +42,6 @@ export const icons = {
 export interface Shell {
   canvas: HTMLCanvasElement;
   video: HTMLVideoElement;
-  gate: HTMLElement;
-  enableButton: HTMLButtonElement;
-  skipButton: HTMLButtonElement;
 
   modeButton: HTMLButtonElement;
   tonightButton: HTMLButtonElement;
@@ -79,9 +75,6 @@ export interface Shell {
   cameraPermissionStatus: HTMLElement;
   enableCameraButton: HTMLButtonElement;
 
-  setStatus(text: string): void;
-  setPermission(which: 'camera' | 'location' | 'motion', state: PermissionState): void;
-  gateWarning(text: string): void;
   fatal(title: string, detail: string): void;
   toast(text: string, ms?: number): void;
   updateHud(basis: CameraBasis, frame: SkyFrame, mode: string, magneticInterference: boolean): void;
@@ -309,36 +302,6 @@ export function buildShell(root: HTMLElement): Shell {
       </div>
     </div>
 
-    <div class="gate" id="gate">
-      <div class="wordmark">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2 13.9 9.1 21 11 13.9 12.9 12 20 10.1 12.9 3 11 10.1 9.1Z" fill="var(--accent)"></path></svg>
-        <span>StarGaze</span>
-      </div>
-      <h1>Point your phone at the sky.</h1>
-      <p class="lede">It works out what's overhead from three things: where you are, what time it is, and which way you're pointing. No image recognition — the camera, if you allow it, is only there to show the real sky behind the overlay.</p>
-      <div class="perms glass">
-        <div class="perm">
-          <span class="perm-icon">${icons.pin}</span>
-          <span class="perm-text"><b>Location</b><span>Your latitude decides which half of the sky is above you.</span></span>
-          <span class="status" id="p-location">Required</span>
-        </div>
-        <div class="perm">
-          <span class="perm-icon">${icons.camera}</span>
-          <span class="perm-text"><b>Camera</b><span>Puts the real sky behind the overlay so you can match them up.</span></span>
-          <span class="status" id="p-camera">Optional</span>
-        </div>
-        <div class="perm">
-          <span class="perm-icon">${icons.compass}</span>
-          <span class="perm-text"><b>Motion &amp; compass</b><span>Tells the app which direction and angle you're aiming at. Phone compasses typically run several degrees off — Settings has a way to correct for it.</span></span>
-          <span class="status" id="p-motion">Optional</span>
-        </div>
-      </div>
-      <div class="help" id="gate-warning" style="margin-top:16px;color:#ff9d85;display:none"></div>
-      <div class="spacer" style="flex-grow:1;min-height:24px"></div>
-      <button class="primary" id="btn-enable" type="button">Enable &amp; start</button>
-      <button class="secondary" id="btn-skip" type="button">Skip — just show me the sky</button>
-      <p class="footnote" id="status">Every position is computed on your device.<br>Nothing about where you are is sent anywhere.</p>
-    </div>
   `;
 
   const pick = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#${id}`)!;
@@ -373,9 +336,6 @@ export function buildShell(root: HTMLElement): Shell {
   const shell: Shell = {
     canvas,
     video: pick<HTMLVideoElement>('camera'),
-    gate: pick('gate'),
-    enableButton: pick<HTMLButtonElement>('btn-enable'),
-    skipButton: pick<HTMLButtonElement>('btn-skip'),
 
     modeButton: pick<HTMLButtonElement>('btn-mode'),
     tonightButton: pick<HTMLButtonElement>('btn-tonight'),
@@ -408,37 +368,19 @@ export function buildShell(root: HTMLElement): Shell {
     cameraPermissionStatus: pick('camera-permission-status'),
     enableCameraButton: pick<HTMLButtonElement>('btn-enable-camera'),
 
-    setStatus(text) {
-      pick('status').textContent = text;
-    },
 
-    setPermission(which, state) {
-      const el = pick(`p-${which}`);
-      const label =
-        state === 'granted'
-          ? 'Granted'
-          : state === 'denied'
-            ? 'Denied'
-            : state === 'unsupported'
-              ? 'Unavailable'
-              : 'Required';
-      el.textContent = label;
-      el.dataset.state = state;
-    },
 
-    gateWarning(text) {
-      const el = pick('gate-warning');
-      el.textContent = text;
-      el.style.display = 'block';
-    },
 
     fatal(title, detail) {
-      pick('gate').innerHTML = `
+      // The catalogue failed to load, so there is no sky to show behind
+      // anything -- this replaces the whole app rather than overlaying it.
+      root.innerHTML = `
+        <div class="gate" style="align-items:center;justify-content:center;text-align:center">
         <div style="margin:auto;text-align:center;max-width:320px">
           <h1 style="font-size:22px;margin:0 0 12px">${title}</h1>
           <p class="help" style="font-size:13px;line-height:1.5">${detail}</p>
           <p class="help" style="font-size:12px;margin-top:20px">Run <code>npm run data</code> to generate the catalogue.</p>
-        </div>`;
+        </div></div>`;
     },
 
     toast(text, ms = 3200) {

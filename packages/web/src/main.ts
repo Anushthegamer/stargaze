@@ -170,7 +170,6 @@ class StarGaze {
     this.shell = buildShell(root);
     this.renderer = new SkyRenderer(this.shell.canvas);
 
-    this.shell.setStatus('Loading catalogue…');
     try {
       this.data = await loadSkyData();
     } catch (error) {
@@ -182,9 +181,7 @@ class StarGaze {
     }
 
     this.model = new SkyModel(this.data);
-    this.shell.setStatus(`${this.data.stars.count.toLocaleString()} stars ready`);
 
-    this.wireGate();
     this.wireSettings();
     this.wireCanvas();
     this.wireNav();
@@ -197,12 +194,26 @@ class StarGaze {
     this.updateSky(true);
     requestAnimationFrame(() => this.tick());
 
-    // A returning visitor who already granted everything this profile needs
-    // should not have to tap through the gate again. Motion is the one
-    // exception: wherever it needs a gesture-gated prompt, that prompt cannot
-    // fire outside a tap, and its grant does not reliably persist anyway --
-    // see motionNeedsGesture's own doc comment.
-    if (!motionNeedsGesture() && (await this.everythingAlreadyGranted())) {
+    // The sky is the first thing anyone sees. A full-screen consent wall in
+    // front of an app nobody has seen yet is both hostile and unnecessary:
+    // drag mode works with no permissions at all, so there is nothing to gate.
+    // Permissions are asked for in the background, the way ordinary apps do.
+    this.enterSky();
+    this.warnIfInsecureContext();
+
+    if (motionNeedsGesture()) {
+      // Where the browser requires a gesture for motion, it cannot be asked
+      // for from here. Ask on the first touch of the sky instead -- still no
+      // wall, and by then the user has actually seen what they are granting
+      // it for.
+      void this.requestEverything(false);
+
+      const askOnFirstTouch = (): void => {
+        this.shell.canvas.removeEventListener('pointerdown', askOnFirstTouch);
+        void this.requestEverything();
+      };
+      this.shell.canvas.addEventListener('pointerdown', askOnFirstTouch);
+    } else {
       void this.requestEverything();
     }
   }
@@ -249,34 +260,35 @@ class StarGaze {
    * Permissions
    * ---------------------------------------------------------------- */
 
-  private wireGate(): void {
-    if (!isSecureContextForSensors()) {
-      this.shell.gateWarning(
-        'This page is not on a secure origin, so the camera, location and motion sensors are all blocked. ' +
-          'Use https, or localhost.',
-      );
-    }
-
-    this.shell.enableButton.addEventListener('click', () => void this.requestEverything());
-    this.shell.skipButton.addEventListener('click', () => {
-      this.permissions.motion = this.permissions.motion === 'unknown' ? 'denied' : this.permissions.motion;
-      this.enterSky();
-    });
+  /**
+   * Sensors need a secure context and fail silently without one, which is the
+   * single most confusing way this can break. Worth saying, but as a message
+   * over the sky rather than a screen standing in front of it.
+   */
+  private warnIfInsecureContext(): void {
+    if (isSecureContextForSensors()) return;
+    this.shell.toast(
+      'This page is not on a secure origin, so the camera, location and motion sensors are all blocked. Use https, or localhost.',
+      7000,
+    );
   }
 
-  private async requestEverything(): Promise<void> {
-    this.shell.enableButton.disabled = true;
-    this.shell.enableButton.textContent = 'Asking…';
-
+  /**
+   * `includeMotion` is false only while waiting on a gesture the browser
+   * demands for orientation. Location and camera never need one, so they are
+   * asked for straight away rather than held hostage to it.
+   */
+  private async requestEverything(includeMotion = true): Promise<void> {
     // Motion first, and in the same gesture: wherever it needs one, this is
     // only granted from inside a user gesture, and an await on anything else
     // loses that.
-    const motion = await this.orientation.start((sample) => {
-      this.latest = sample;
-      if (!sample.absolute) this.permissions.motion = 'granted';
-    });
-    this.permissions.motion = motion;
-    this.shell.setPermission('motion', motion);
+    if (includeMotion) {
+      const motion = await this.orientation.start((sample) => {
+        this.latest = sample;
+        if (!sample.absolute) this.permissions.motion = 'granted';
+      });
+      this.permissions.motion = motion;
+    }
     // No permission prompt of its own, and every failure mode is silent --
     // safe to just try, regardless of platform.
     this.magnetometer.start((microtesla) => {
@@ -298,7 +310,6 @@ class StarGaze {
     } else {
       this.permissions.location = 'denied';
     }
-    this.shell.setPermission('location', this.permissions.location);
 
     // A device whose primary pointer is a mouse or trackpad is a laptop or
     // desktop -- its camera, if it has one, faces the user, not the sky.
@@ -307,7 +318,6 @@ class StarGaze {
       ? await requestCamera()
       : { stream: null, state: 'unsupported' as const, fov: null };
     this.permissions.camera = camera.state;
-    this.shell.setPermission('camera', camera.state);
 
     if (camera.stream) {
       this.shell.video.srcObject = camera.stream;
@@ -319,13 +329,24 @@ class StarGaze {
       }
     }
 
-    this.mode = motion === 'granted' || this.usingNativeRotationVector ? 'sensors' : 'manual';
-    this.enterSky();
+    this.mode =
+      this.permissions.motion === 'granted' || this.usingNativeRotationVector
+        ? 'sensors'
+        : 'manual';
+    this.reportSensorState();
   }
 
   private enterSky(): void {
-    this.shell.gate.remove();
     this.updateSky(true);
+    this.syncModeButton();
+  }
+
+  /**
+   * Say what the sensors actually gave us, once asking has finished. Kept
+   * apart from entering the sky because at that point nothing has been
+   * granted or refused yet, so there is nothing truthful to report.
+   */
+  private reportSensorState(): void {
     this.syncModeButton();
 
     if (this.mode === 'manual') {
