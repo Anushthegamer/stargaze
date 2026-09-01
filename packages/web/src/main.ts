@@ -38,7 +38,7 @@ import {
   type PermissionState,
   type Position,
 } from './sensors.js';
-import { startRotationVector } from './native.js';
+import { nativePermissionsGranted, startRotationVector } from './native.js';
 import { SkyRenderer, type RenderOptions } from './render.js';
 import {
   calibrate,
@@ -214,6 +214,13 @@ class StarGaze {
    * outside the app, and only the platform knows the current truth.
    */
   private async everythingAlreadyGranted(): Promise<boolean> {
+    // Inside the Android shell, ask Android. The browser's Permissions API
+    // reports on the WebView rather than the app, so a permission the user
+    // granted last launch still reads as ungranted there -- which put the
+    // gate back in front of them on every single launch.
+    const native = await nativePermissionsGranted();
+    if (native) return native.location && (native.camera || !primaryPointerIsCoarse());
+
     if (!('permissions' in navigator)) return false;
 
     try {
