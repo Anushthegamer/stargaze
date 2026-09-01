@@ -135,7 +135,7 @@ Play requires a resolvable privacy policy URL for any app requesting camera
 or location. Paste this into the Play Console listing:
 
 ```
-https://anushthegamer.github.io/stargaze/privacy.html
+https://ramskandh-thirandasu.github.io/stargaze/privacy.html
 ```
 
 It is a static page in the web build (`packages/web/public/privacy.html`), so
@@ -147,7 +147,7 @@ actually does.
 The same bundle the Android app wraps, running in a browser:
 
 ```
-https://anushthegamer.github.io/stargaze/
+https://ramskandh-thirandasu.github.io/stargaze/
 ```
 
 ## What only the account holder can do

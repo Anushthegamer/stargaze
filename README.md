@@ -2,7 +2,7 @@
 
 Point your phone at the night sky and it tells you what you are looking at.
 
-**[Try it in a browser](https://anushthegamer.github.io/stargaze/)** — the same
+**[Try it in a browser](https://ramskandh-thirandasu.github.io/stargaze/)** — the same
 bundle the Android app wraps. Drag to look around; on a phone, allow sensors and
 it follows where you point.
 
@@ -54,7 +54,7 @@ npm run dev:https    # same, with hot reload
 The phone warns about the self-signed certificate once. That warning is
 expected, not a failure — accept it and the sensors start working.
 
-The [live site](https://anushthegamer.github.io/stargaze/) sidesteps this
+The [live site](https://ramskandh-thirandasu.github.io/stargaze/) sidesteps this
 entirely, as does the Android build: the WebView serves from `https://localhost`.
 
 ### First run on a real phone
