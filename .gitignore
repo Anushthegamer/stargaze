@@ -31,3 +31,6 @@ android/local.properties
 Thumbs.db
 .idea/
 .vscode/
+
+# Vercel CLI project link (machine-local, contains project + org ids)
+.vercel
