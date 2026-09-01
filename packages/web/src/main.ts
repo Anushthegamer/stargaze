@@ -37,7 +37,7 @@ import {
   type PermissionState,
   type Position,
 } from './sensors.js';
-import { nativePermissionsGranted, startRotationVector } from './native.js';
+import { startRotationVector } from './native.js';
 import { SkyRenderer, type RenderOptions } from './render.js';
 import {
   calibrate,
@@ -201,59 +201,20 @@ class StarGaze {
     this.enterSky();
     this.warnIfInsecureContext();
 
-    if (motionNeedsGesture()) {
-      // Where the browser requires a gesture for motion, it cannot be asked
-      // for from here. Ask on the first touch of the sky instead -- still no
-      // wall, and by then the user has actually seen what they are granting
-      // it for.
-      void this.requestEverything(false);
+    // Ask for everything that can be asked for silently. Where the browser
+    // demands a gesture for orientation, that one request is held back.
+    await this.requestEverything(!motionNeedsGesture());
 
+    if (!this.usingNativeRotationVector && motionNeedsGesture()) {
+      // Only reached when there is no native sensor and the browser insists
+      // on a gesture -- so ask on the first touch of the sky rather than
+      // behind a wall, and only on devices that genuinely need it.
       const askOnFirstTouch = (): void => {
         this.shell.canvas.removeEventListener('pointerdown', askOnFirstTouch);
-        void this.requestEverything();
+        void this.requestEverything(true);
       };
       this.shell.canvas.addEventListener('pointerdown', askOnFirstTouch);
-    } else {
-      void this.requestEverything();
     }
-  }
-
-  /**
-   * Checks actual OS/browser-level grants via the Permissions API, not
-   * anything this app remembered itself -- a permission can be revoked
-   * outside the app, and only the platform knows the current truth.
-   */
-  private async everythingAlreadyGranted(): Promise<boolean> {
-    // Inside the Android shell, ask Android. The browser's Permissions API
-    // reports on the WebView rather than the app, so a permission the user
-    // granted last launch still reads as ungranted there -- which put the
-    // gate back in front of them on every single launch.
-    const native = await nativePermissionsGranted();
-    if (native) return native.location && (native.camera || !primaryPointerIsCoarse());
-
-    if (!('permissions' in navigator)) return false;
-
-    try {
-      const location = await navigator.permissions.query({ name: 'geolocation' });
-      if (location.state !== 'granted') return false;
-    } catch {
-      return false;
-    }
-
-    if (primaryPointerIsCoarse()) {
-      try {
-        // Not every browser can query 'camera' (Firefox, notably) -- treated
-        // as "can't confirm it's granted", the same as any other unsure case.
-        const camera = await navigator.permissions.query({
-          name: 'camera' as PermissionName,
-        });
-        if (camera.state !== 'granted') return false;
-      } catch {
-        return false;
-      }
-    }
-
-    return true;
   }
 
   /* ---------------------------------------------------------------- *
@@ -278,29 +239,33 @@ class StarGaze {
    * demands for orientation. Location and camera never need one, so they are
    * asked for straight away rather than held hostage to it.
    */
-  private async requestEverything(includeMotion = true): Promise<void> {
-    // Motion first, and in the same gesture: wherever it needs one, this is
-    // only granted from inside a user gesture, and an await on anything else
-    // loses that.
-    if (includeMotion) {
+  private async requestEverything(includeWebMotion = true): Promise<void> {
+    // The native sensor first, because it needs no permission of any kind.
+    // Asking the browser for orientation before trying this was prompting on
+    // every launch for something Android was already willing to give for
+    // free -- and that particular grant does not persist, so the prompt came
+    // back forever.
+    this.usingNativeRotationVector = await startRotationVector((reading) => {
+      this.latestNative = reading;
+    });
+
+    if (this.usingNativeRotationVector) {
+      this.permissions.motion = 'granted';
+    } else if (includeWebMotion) {
+      // No native sensor, so fall back to the browser's -- which is the only
+      // path that can raise a prompt, and now only runs when it is the only
+      // way to get a heading at all.
       const motion = await this.orientation.start((sample) => {
         this.latest = sample;
         if (!sample.absolute) this.permissions.motion = 'granted';
       });
       this.permissions.motion = motion;
     }
+
     // No permission prompt of its own, and every failure mode is silent --
     // safe to just try, regardless of platform.
     this.magnetometer.start((microtesla) => {
       this.liveFieldMicrotesla = microtesla;
-    });
-
-    // Prefer the hardware-fused sensor where Android provides one -- this
-    // does not depend on the DeviceOrientationEvent permission above, and
-    // resolves quickly (false) everywhere it does not apply, so it is worth
-    // waiting for rather than racing it against the mode decision below.
-    this.usingNativeRotationVector = await startRotationVector((reading) => {
-      this.latestNative = reading;
     });
 
     const position = await requestPosition();

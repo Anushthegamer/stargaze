@@ -73,41 +73,6 @@ export async function requestNativeLocation(): Promise<NativePermission> {
 }
 
 /**
- * What the OS has already granted, without prompting for anything.
- *
- * The browser's Permissions API is not a substitute here: inside the
- * Capacitor WebView it reports on the WebView's own state, which does not
- * reflect the Android app-level grant, so an app the user already approved
- * still looks unapproved. Capacitor's checkPermissions() asks Android.
- *
- * Returns null when that cannot be determined -- on the web, or if a plugin
- * is missing -- so the caller can fall back rather than assume either way.
- */
-export async function nativePermissionsGranted(): Promise<
-  { camera: boolean; location: boolean } | null
-> {
-  if (!isNative()) return null;
-
-  try {
-    const [{ Camera }, { Geolocation }] = await Promise.all([
-      import('@capacitor/camera'),
-      import('@capacitor/geolocation'),
-    ]);
-    const [camera, location] = await Promise.all([
-      Camera.checkPermissions(),
-      Geolocation.checkPermissions(),
-    ]);
-
-    return {
-      camera: camera.camera === 'granted',
-      location: location.location === 'granted' || location.coarseLocation === 'granted',
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Start Android's hardware-fused rotation-vector sensor, where it exists.
  *
  * Returns false for every reason it might not work -- not native, no such
