@@ -142,43 +142,7 @@ For scale, the full Moon is about **1,800 arcseconds** wide.
 
 Even the worst of these is a quarter of a Moon-width. Meanwhile a phone compass
 is off by 5–15° — that's **18,000 to 54,000 arcseconds**, hundreds of times
-larger. This is why the calibration feature exists, and why the app is honest
-about its compass rather than pretending.
-
-<details>
-<summary><b>For the curious: how bugs get caught here</b></summary>
-
-Astronomy code fails in a nasty way — it returns answers that look completely
-reasonable and are wrong. So besides comparing against NASA, the tests check
-things you can verify by reasoning about the real world: Polaris should sit at
-your latitude, things should rise in the east, and lying the phone flat should
-point the camera at the floor.
-
-That second kind of test caught three real bugs:
-
-- Two directions were combined in the wrong order, rendering the entire sky
-  **mirrored**. It passed the obvious mathematical check, because a
-  wrong-but-consistent answer still looks consistent.
-- The Earth's magnetic field model used the wrong normalisation convention,
-  putting the compass correction **24° out**.
-- Planet positions mixed two different reference frames that look nearly
-  identical but drift apart over time.
-
-Because a test only proves things worked on the day it was written, a monthly
-job re-checks everything against fresh NASA data and opens an issue if anything
-has drifted.
-
-</details>
-
-## Honest limitations
-
-- **The compass is the weak point**, and no software can fix a magnetometer.
-  Indoors it's close to useless — metal furniture and building steel pull it
-  wildly off. Outside, after calibrating, it's good.
-- The magnetic correction stops working properly very near the poles, and is
-  flagged as out-of-date after 2030 rather than silently guessing.
-- Moonrise and moonset times are accurate to a few minutes, not seconds.
-- No galaxies or nebulae, and Saturn's rings aren't drawn.
+larger.
 
 ## Project layout
 
