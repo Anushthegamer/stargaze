@@ -215,13 +215,12 @@ won't see it" is useful; vanishing is not.
   sight something you can see, confirm, and the offset is stored. Up to three
   sightings can be combined; the correction expires after 14 days or a 20 km
   move, since it only describes one magnetic environment.
-- **The native rotation-vector plugin is unverified.** Android's
-  `TYPE_ROTATION_VECTOR` fuses gyroscope, accelerometer and magnetometer in
-  hardware, and it is written and wired in — but no machine used to build this
-  has a magnetometer, so it has never produced a reading. The first run on a real
-  phone is the first evidence it works at all.
-- **Nothing has run on real hardware yet.** Everything is verified against JPL
-  and against physical facts; the compass can only be judged in the field.
+- **The compass is only as good as the magnetometer.** Sensor fusion comes from
+  Android's `TYPE_ROTATION_VECTOR` via `SensorManager.getOrientation`, so the
+  platform owns the axis conventions rather than this code re-deriving them.
+  Confirmed tracking on an Android device. Indoors it is not worth trusting at
+  all — desk metal, speakers and building steel pull it by tens of degrees,
+  which is what the interference warning is for.
 - Magnetic declination is interpolated on a 5° grid, stops at ±85° latitude, and
   is flagged stale past IGRF-14's 2030 forecast window rather than extrapolated
   quietly.
