@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#05070D" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="StarGaze privacy policy: everything runs on your device, nothing is transmitted." />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <title>StarGaze — Privacy Policy</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0 auto;
+        padding: 48px 24px 96px;
+        max-width: 40rem;
+        background: #05070d;
+        color: #eef2f8;
+        font: 16px/1.65 system-ui, -apple-system, sans-serif;
+      }
+      h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; }
+      h2 { font-size: 17px; margin: 36px 0 8px; }
+      p, li { color: rgba(238, 242, 248, 0.78); }
+      li { margin-bottom: 6px; }
+      .updated { color: rgba(238, 242, 248, 0.45); font-size: 14px; margin: 0 0 28px; }
+      a { color: #e9a93b; }
+      .back { display: inline-block; margin-top: 40px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <h1>Privacy Policy</h1>
+    <p class="updated">StarGaze · last updated 31 August 2026</p>
+
+    <p>
+      StarGaze does not collect, store, or transmit any personal data. There is no
+      backend server, no account system, and no analytics of any kind. Everything
+      below describes data the app <em>reads on your device</em> and immediately
+      uses there.
+    </p>
+
+    <h2>Location</h2>
+    <p>
+      The app reads your latitude and longitude to work out which stars, planets
+      and constellations are above the horizon where you are — this is a required
+      input to the astronomy, not an optional extra. Your coordinates are used only
+      for that calculation, are never sent anywhere, and are not retained after the
+      session. If you decline location access, you can type coordinates in manually
+      and the app works normally.
+    </p>
+
+    <h2>Camera</h2>
+    <p>
+      If you allow it, the app shows a live rear-camera feed behind the star overlay
+      so you can line the overlay up against the real sky. Nothing is captured,
+      recorded, stored, analysed, or transmitted — the feed is displayed and
+      discarded frame by frame, and no image recognition is performed on it. The app
+      is fully usable without camera access.
+    </p>
+
+    <h2>Motion and compass sensors</h2>
+    <p>
+      Device orientation readings are used to work out which way the phone is
+      pointing. They are read continuously while the app is open and used only to
+      aim the view. They are never transmitted or stored.
+    </p>
+
+    <h2>Stored on your device</h2>
+    <p>
+      The app saves a small amount of data locally, in your browser's own storage,
+      so it remembers your preferences between visits:
+    </p>
+    <ul>
+      <li>Display settings (magnitude cutoff, field of view, which overlays are on)</li>
+      <li>Your compass calibration offset, and when and roughly where it was measured</li>
+      <li>A manually entered location, if you set one</li>
+    </ul>
+    <p>
+      This never leaves your device. Clearing the app's data (or the site's data in
+      your browser) erases all of it.
+    </p>
+
+    <h2>Network access</h2>
+    <p>
+      The star catalogue, constellation figures, planetary data and magnetic model
+      are bundled with the app and loaded from it directly — the app works fully
+      offline, which is the point. Web fonts are the one exception: the browser
+      fetches them from Google Fonts on first load, which is a normal request to
+      that service and carries no data about you beyond what any web page request
+      does. The Android build declares the internet permission because the Capacitor
+      runtime it is built on requires it, not because the app makes network calls
+      of its own.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      StarGaze collects no data from anyone, of any age.
+    </p>
+
+    <h2>Changes</h2>
+    <p>
+      If this policy changes, the updated date above changes with it. The app's
+      full source is public, so any claim on this page can be checked against the
+      code that implements it.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions or corrections: open an issue on the
+      <a href="https://github.com/Anushthegamer/stargaze">project repository</a>.
+    </p>
+
+    <a class="back" href="./">← Back to StarGaze</a>
+  </body>
+</html>
