@@ -132,7 +132,7 @@ npm test
 ## How it fits together
 
 Everything runs on the device. The Python in `tools/` runs once at build time
-and its output is committed; the app loads five JSON files totalling **44 KB
+and its output is committed; the app loads five JSON files totalling **~57 KB
 gzipped** and does the rest itself. That is what lets it work in a field with no
 signal, which is exactly where it gets used.
 
