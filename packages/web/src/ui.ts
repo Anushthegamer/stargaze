@@ -158,6 +158,7 @@ export function buildShell(root: HTMLElement): Shell {
 
     <div class="sheet glass" id="sheet-tonight">
       <div class="grabber"></div>
+      <button class="sheet-close iconbtn" type="button" aria-label="Close">${icons.close}</button>
       <h2>Tonight</h2>
       <div class="help" id="tonight-sub" style="margin-top:6px"></div>
       <div class="sheet-body"><div class="list" id="tonight-list"></div></div>
@@ -165,6 +166,7 @@ export function buildShell(root: HTMLElement): Shell {
 
     <div class="sheet glass" id="sheet-search">
       <div class="grabber"></div>
+      <button class="sheet-close iconbtn" type="button" aria-label="Close">${icons.close}</button>
       <h2>Search</h2>
       <div class="searchbar">
         <span class="searchbar-icon">${icons.search}</span>
@@ -176,6 +178,7 @@ export function buildShell(root: HTMLElement): Shell {
 
     <div class="sheet glass" id="sheet-calibrate">
       <div class="grabber"></div>
+      <button class="sheet-close iconbtn" type="button" aria-label="Close">${icons.close}</button>
       <h2>Calibrate the compass</h2>
       <div class="sheet-body">
         <p class="help" style="line-height:1.5;margin:0 0 12px">
@@ -198,6 +201,7 @@ export function buildShell(root: HTMLElement): Shell {
 
     <div class="sheet glass" id="sheet-settings">
       <div class="grabber"></div>
+      <button class="sheet-close iconbtn" type="button" aria-label="Close">${icons.close}</button>
       <h2>Settings</h2>
       <div class="sheet-body">
         <span class="cap">Catalogue</span>
@@ -360,6 +364,11 @@ export function buildShell(root: HTMLElement): Shell {
 
   // Tapping the sky dismisses whatever is open.
   canvas.addEventListener('pointerdown', closeSheets);
+  // Tapping the sky closes a sheet, but on a phone an open sheet covers
+  // most of it -- there has to be a control you can actually see.
+  root.querySelectorAll('.sheet-close').forEach((button) =>
+    button.addEventListener('click', closeSheets),
+  );
 
   const shell: Shell = {
     canvas,

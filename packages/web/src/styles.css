@@ -280,6 +280,15 @@ button {
   }
 }
 
+/* Tapping the sky also closes a sheet, but an open sheet covers most of a
+   phone screen -- this is the affordance you can actually see. */
+.sheet-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 1;
+}
+
 .grabber {
   align-self: center;
   width: 38px;
