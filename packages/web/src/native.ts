@@ -18,7 +18,6 @@ export type NativePermission = 'granted' | 'denied' | 'unavailable';
 
 interface CapacitorGlobal {
   isNativePlatform?: () => boolean;
-  getPlatform?: () => string;
 }
 
 function capacitor(): CapacitorGlobal | undefined {
@@ -28,10 +27,6 @@ function capacitor(): CapacitorGlobal | undefined {
 /** True when running inside the Android (or iOS) shell rather than a browser. */
 export function isNative(): boolean {
   return capacitor()?.isNativePlatform?.() === true;
-}
-
-export function platform(): string {
-  return capacitor()?.getPlatform?.() ?? 'web';
 }
 
 /**
