@@ -74,6 +74,9 @@ export interface Shell {
   permissionsSection: HTMLElement;
   cameraPermissionStatus: HTMLElement;
   enableCameraButton: HTMLButtonElement;
+  themeLightButton: HTMLButtonElement;
+  themeDarkButton: HTMLButtonElement;
+  themeSystemButton: HTMLButtonElement;
 
   fatal(title: string, detail: string): void;
   toast(text: string, ms?: number): void;
@@ -197,7 +200,18 @@ export function buildShell(root: HTMLElement): Shell {
       <button class="sheet-close iconbtn" type="button" aria-label="Close">${icons.close}</button>
       <h2>Settings</h2>
       <div class="sheet-body">
-        <span class="cap">Catalogue</span>
+        <span class="cap">Appearance</span>
+        <div class="segmented" id="theme-picker" role="group" aria-label="Appearance">
+          <button class="segmented-btn" id="theme-light" type="button" aria-pressed="false">Light</button>
+          <button class="segmented-btn" id="theme-dark" type="button" aria-pressed="false">Dark</button>
+          <button class="segmented-btn" id="theme-system" type="button" aria-pressed="false">System</button>
+        </div>
+        <span class="help" style="display:block;margin-top:10px;line-height:1.5">
+          The sky stays dark in every theme — a bright screen kills the night vision this app exists to protect. Light only reaches the menus.
+        </span>
+
+        <div class="section">
+          <span class="cap">Catalogue</span>
         <div class="field">
           <div class="field-head"><b>Magnitude cutoff</b><span id="mag-value">4.5</span></div>
           <input type="range" id="mag" min="1" max="4.5" step="0.1" />
@@ -209,8 +223,9 @@ export function buildShell(root: HTMLElement): Shell {
           <button class="switch" id="t-labels" type="button" aria-pressed="true"></button></div>
         <div class="row"><b style="font-size:14.5px;font-weight:500">Horizon</b>
           <button class="switch" id="t-horizon" type="button" aria-pressed="true"></button></div>
+        </div>
 
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div class="section">
           <span class="cap">Alignment</span>
           <div class="field">
             <div class="field-head"><b>Camera field of view</b><span id="fov-value">66°</span></div>
@@ -237,19 +252,19 @@ export function buildShell(root: HTMLElement): Shell {
           </div>
         </div>
 
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div class="section">
           <span class="cap">Observer</span>
           <form id="loc-form" style="display:flex;flex-direction:column;gap:12px;margin-top:14px">
             <div style="display:flex;gap:10px">
               <label style="flex:1;display:flex;flex-direction:column;gap:6px">
                 <span class="cap">Latitude</span>
                 <input class="mono" id="lat" type="number" step="0.0001" inputmode="decimal"
-                  style="width:100%;height:44px;padding:0 12px;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,0.04);color:var(--ink);font-size:14px" />
+                  style="width:100%;height:44px;padding:0 12px;border:1px solid var(--hair);border-radius:12px;background:var(--field);color:var(--ink);font-size:14px" />
               </label>
               <label style="flex:1;display:flex;flex-direction:column;gap:6px">
                 <span class="cap">Longitude</span>
                 <input class="mono" id="lon" type="number" step="0.0001" inputmode="decimal"
-                  style="width:100%;height:44px;padding:0 12px;border:1px solid var(--hair);border-radius:12px;background:rgba(255,255,255,0.04);color:var(--ink);font-size:14px" />
+                  style="width:100%;height:44px;padding:0 12px;border:1px solid var(--hair);border-radius:12px;background:var(--field);color:var(--ink);font-size:14px" />
               </label>
             </div>
             <button class="secondary" type="submit" style="margin-top:0">Use these coordinates</button>
@@ -257,14 +272,14 @@ export function buildShell(root: HTMLElement): Shell {
           <button class="secondary" id="use-gps" type="button">Use my location</button>
         </div>
 
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div class="section">
           <span class="cap">Accuracy</span>
           <button class="secondary" id="btn-calibrate" type="button" style="margin-top:14px">
             Calibrate on a known star
           </button>
         </div>
 
-        <div id="permissions-section" style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div id="permissions-section" class="section">
           <span class="cap">Permissions</span>
           <p class="help" style="line-height:1.5;margin:8px 0 0">
             Turned something off by mistake, or changed your mind? Ask again here --
@@ -281,7 +296,7 @@ export function buildShell(root: HTMLElement): Shell {
           </div>
         </div>
 
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div class="section">
           <span class="cap">Time travel</span>
           <div class="field">
             <div class="field-head"><b>Offset from now</b><span id="time-value">now</span></div>
@@ -290,7 +305,7 @@ export function buildShell(root: HTMLElement): Shell {
           </div>
         </div>
 
-        <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+        <div class="section">
           <span class="cap">Credits</span>
           <p class="help" style="line-height:1.6;margin-top:10px">
             Star positions, magnitudes, colours and names: <a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noopener">HYG Database v4.0</a>, David Nash / astronexus (CC BY-SA 4.0).
@@ -367,19 +382,18 @@ export function buildShell(root: HTMLElement): Shell {
     permissionsSection: pick('permissions-section'),
     cameraPermissionStatus: pick('camera-permission-status'),
     enableCameraButton: pick<HTMLButtonElement>('btn-enable-camera'),
-
-
-
-
+    themeLightButton: pick<HTMLButtonElement>('theme-light'),
+    themeDarkButton: pick<HTMLButtonElement>('theme-dark'),
+    themeSystemButton: pick<HTMLButtonElement>('theme-system'),
     fatal(title, detail) {
       // The catalogue failed to load, so there is no sky to show behind
       // anything -- this replaces the whole app rather than overlaying it.
       root.innerHTML = `
         <div class="gate" style="align-items:center;justify-content:center;text-align:center">
-        <div style="margin:auto;text-align:center;max-width:320px">
-          <h1 style="font-size:22px;margin:0 0 12px">${title}</h1>
-          <p class="help" style="font-size:13px;line-height:1.5">${detail}</p>
-          <p class="help" style="font-size:12px;margin-top:20px">Run <code>npm run data</code> to generate the catalogue.</p>
+        <div style="margin:auto;max-width:320px">
+          <h1 style="font-size:22px">${title}</h1>
+          <p class="lede" style="font-size:13px">${detail}</p>
+          <p class="help" style="margin-top:20px">Run <code>npm run data</code> to generate the catalogue.</p>
         </div></div>`;
     },
 

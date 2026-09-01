@@ -9,6 +9,23 @@
     />
     <meta name="theme-color" content="#05070D" />
     <meta name="color-scheme" content="dark" />
+    <script>
+      // Resolves the chrome theme before first paint, so there is no flash
+      // of the wrong one -- theme.ts takes over from here once it loads.
+      // Mirrors resolveTheme() there; kept separate because that runs as a
+      // deferred module, too late to beat the first paint.
+      (function () {
+        try {
+          var pref = localStorage.getItem('stargaze.theme') || 'system';
+          var dark =
+            pref === 'dark' ||
+            (pref !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
     <meta
       name="description"
       content="Point your phone at the sky and it tells you what you are looking at. Works offline."

@@ -1,23 +1,41 @@
 /*
- * Design tokens, lifted from the StarGaze canvas.
+ * Design tokens.
  *
- * Everything is tuned for reading in the dark: near-black rather than pure
- * black (the camera feed sits behind it), warm-white text, and one amber
- * accent -- amber because it preserves dark adaptation, which is the whole
- * reason red light is standard in observatories.
+ * The chrome (sheets, settings, onboarding, lists) follows the theme picked
+ * in Settings -- light, dark, or the OS. The sky itself, and the HUD/card
+ * that sit directly over it while you're actually looking at it, do not:
+ * they are night-styled always, via the --night-* tokens below, because a
+ * bright screen at either end kills the dark adaptation this app exists to
+ * protect. See the ".hud, .card, .toast" override further down.
+ *
+ * Dark chrome reuses the night palette outright -- amber-on-near-black,
+ * because amber preserves dark adaptation, which is why red light is
+ * standard in observatories. Light chrome is its own identity: warm
+ * chart-paper and ink, with the glass panels turning into a frosted paper
+ * held up against the sky rather than a dark pane -- not dark mode inverted.
  */
 
 :root {
-  --bg: #05070d;
-  --glass: rgba(9, 13, 21, 0.58);
-  --glass-solid: rgba(9, 13, 21, 0.92);
-  --hair: rgba(255, 255, 255, 0.11);
-  --hair-strong: rgba(255, 255, 255, 0.18);
-  --ink: #eef2f8;
-  --dim: rgba(238, 242, 248, 0.6);
-  --faint: rgba(238, 242, 248, 0.38);
-  --accent: #e9a93b;
-  --accent-ink: #06080e;
+  --night-bg: #05070d;
+  --night-glass: rgba(9, 13, 21, 0.58);
+  --night-glass-solid: rgba(9, 13, 21, 0.92);
+  --night-hair: rgba(255, 255, 255, 0.11);
+  --night-hair-strong: rgba(255, 255, 255, 0.18);
+  --night-ink: #eef2f8;
+  --night-dim: rgba(238, 242, 248, 0.6);
+  --night-faint: rgba(238, 242, 248, 0.38);
+  --night-accent: #e9a93b;
+  --night-accent-ink: #06080e;
+  --night-accent-hover: #f2b955;
+  --night-accent-wash: rgba(233, 169, 59, 0.1);
+  --night-accent-wash-strong: rgba(233, 169, 59, 0.28);
+  --night-accent-glow: rgba(233, 169, 59, 0.16);
+  --night-field: rgba(255, 255, 255, 0.04);
+
+  /* Dims the sky behind onboarding without hiding it -- the same scrim
+     works over either chrome theme, since it sits over the (always dark)
+     sky, not over the paper. */
+  --scrim: rgba(2, 4, 9, 0.46);
 
   --radius-sm: 9px;
   --radius: 15px;
@@ -31,8 +49,49 @@
 
   --sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
 
+:root[data-theme='dark'] {
   color-scheme: dark;
+  --bg: var(--night-bg);
+  --glass: var(--night-glass);
+  --glass-solid: var(--night-glass-solid);
+  --hair: var(--night-hair);
+  --hair-strong: var(--night-hair-strong);
+  --ink: var(--night-ink);
+  --dim: var(--night-dim);
+  --faint: var(--night-faint);
+  --accent: var(--night-accent);
+  --accent-ink: var(--night-accent-ink);
+  --accent-hover: var(--night-accent-hover);
+  --accent-wash: var(--night-accent-wash);
+  --accent-wash-strong: var(--night-accent-wash-strong);
+  --accent-glow: var(--night-accent-glow);
+  --field: var(--night-field);
+  --gate-gradient: radial-gradient(120% 60% at 50% 0%, #0b1322 0%, #06090f 55%, #04060c 100%);
+}
+
+/* Chart paper, not an inverted night mode: warm paper, ink-brown text, and a
+   deeper burnt amber -- the same accent family, tuned so it still reads as
+   the light end of one identity rather than a second product. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f1ece0;
+  --glass: rgba(244, 239, 228, 0.74);
+  --glass-solid: rgba(247, 243, 233, 0.97);
+  --hair: rgba(28, 22, 12, 0.13);
+  --hair-strong: rgba(28, 22, 12, 0.24);
+  --ink: #241f14;
+  --dim: rgba(36, 31, 20, 0.64);
+  --faint: rgba(36, 31, 20, 0.46);
+  --accent: #a8631b;
+  --accent-ink: #fbf3e6;
+  --accent-hover: #c17a2c;
+  --accent-wash: rgba(168, 99, 27, 0.12);
+  --accent-wash-strong: rgba(168, 99, 27, 0.32);
+  --accent-glow: rgba(168, 99, 27, 0.18);
+  --field: rgba(28, 22, 12, 0.045);
+  --gate-gradient: radial-gradient(120% 60% at 50% 0%, #faf6ea 0%, #f1ece0 55%, #e9e1cc 100%);
 }
 
 *,
@@ -112,6 +171,29 @@ button {
 /* ------------------------------------------------------------------ *
  * Chrome
  * ------------------------------------------------------------------ */
+
+/* The HUD and the object card sit directly over the live sky and are read
+   under the same conditions as the sky itself -- night colours always, no
+   matter what the chrome theme is set to. Redefining the tokens here means
+   every rule below that reads var(--ink) etc. just keeps working unchanged. */
+.hud,
+.card,
+.toast {
+  --bg: var(--night-bg);
+  --glass: var(--night-glass);
+  --glass-solid: var(--night-glass-solid);
+  --hair: var(--night-hair);
+  --hair-strong: var(--night-hair-strong);
+  --ink: var(--night-ink);
+  --dim: var(--night-dim);
+  --faint: var(--night-faint);
+  --accent: var(--night-accent);
+  --accent-ink: var(--night-accent-ink);
+  --accent-hover: var(--night-accent-hover);
+  --accent-wash: var(--night-accent-wash);
+  --accent-wash-strong: var(--night-accent-wash-strong);
+  --accent-glow: var(--night-accent-glow);
+}
 
 .hud {
   position: absolute;
@@ -294,7 +376,7 @@ button {
   width: 38px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--hair-strong);
   flex: 0 0 auto;
 }
 
@@ -399,7 +481,7 @@ button {
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: rgba(238, 242, 248, 0.55);
+  color: var(--dim);
 }
 
 /* ------------------------------------------------------------------ *
@@ -443,7 +525,46 @@ button {
 
 .help {
   font-size: 11.5px;
-  color: rgba(238, 242, 248, 0.42);
+  color: var(--faint);
+}
+
+/* One settings block, ruled off from the next. Was six copies of the same
+   inline style; a class instead of a style attribute is also how a themed
+   divider gets to use var(--hair) instead of a hardcoded white that
+   vanishes on light chrome. */
+.section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hair);
+}
+
+/* Three-way appearance picker: one pressed segment, sliding underline-free
+   since a moving pill under three text labels needs measurement this app
+   has no other use for. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--field);
+}
+
+.segmented-btn {
+  flex: 1 1 0;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+
+.segmented-btn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 input[type='range'] {
@@ -458,13 +579,13 @@ input[type='range'] {
 input[type='range']::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hair-strong);
 }
 
 input[type='range']::-moz-range-track {
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hair-strong);
 }
 
 input[type='range']::-webkit-slider-thumb {
@@ -492,7 +613,7 @@ input[type='range']::-moz-range-thumb {
   height: 29px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.13);
+  background: var(--hair-strong);
   padding: 0;
   transition: background 0.16s;
 }
@@ -533,7 +654,7 @@ input[type='range']::-moz-range-thumb {
   gap: 15px;
   padding: 14px 4px;
   border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--hair);
   background: transparent;
   color: var(--ink);
   text-align: left;
@@ -560,7 +681,7 @@ input[type='range']::-moz-range-thumb {
 
 .item-name span {
   font-size: 11.5px;
-  color: rgba(238, 242, 248, 0.46);
+  color: var(--dim);
 }
 
 .item-num {
@@ -579,7 +700,7 @@ input[type='range']::-moz-range-thumb {
 
 .item-num span {
   font-size: 11px;
-  color: rgba(238, 242, 248, 0.42);
+  color: var(--dim);
 }
 
 .arrow {
@@ -611,14 +732,14 @@ input[type='range']::-moz-range-thumb {
 }
 
 /* ------------------------------------------------------------------ *
- * Permission gate
+ * Fatal-error screen
  * ------------------------------------------------------------------ */
 
 .gate {
   position: absolute;
   inset: 0;
   z-index: 10;
-  background: radial-gradient(120% 60% at 50% 0%, #0b1322 0%, #06090f 55%, #04060c 100%);
+  background: var(--gate-gradient);
   display: flex;
   flex-direction: column;
   /* The gradient stays full-bleed; the text column caps out at --shell-max by
@@ -637,7 +758,7 @@ input[type='range']::-moz-range-thumb {
   font-weight: 700;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: rgba(238, 242, 248, 0.82);
+  color: var(--dim);
 }
 
 .gate h1 {
@@ -649,86 +770,12 @@ input[type='range']::-moz-range-thumb {
   text-wrap: balance;
 }
 
-.gate p.lede {
+.lede {
   margin: 14px 0 0;
   font-size: 14.5px;
   line-height: 1.55;
-  color: rgba(238, 242, 248, 0.58);
-  text-wrap: pretty;
-}
-
-.perms {
-  margin-top: 26px;
-  border-radius: var(--radius-lg);
-  padding: 4px 18px;
-}
-
-.perm {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px 0;
-}
-
-.perm + .perm {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.perm-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--dim);
-}
-
-.perm-text {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.perm-text b {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.perm-text span {
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: rgba(238, 242, 248, 0.56);
   text-wrap: pretty;
-}
-
-.status {
-  flex: 0 0 auto;
-  margin-top: 3px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(238, 242, 248, 0.52);
-  white-space: nowrap;
-}
-
-.status[data-state='granted'] {
-  background: var(--accent);
-  border-color: transparent;
-  color: var(--accent-ink);
-}
-
-.status[data-state='denied'] {
-  border-color: rgba(255, 122, 92, 0.5);
-  color: #ff9d85;
 }
 
 .primary {
@@ -759,8 +806,168 @@ input[type='range']::-moz-range-thumb {
   text-align: center;
   font-size: 11.5px;
   line-height: 1.5;
-  color: rgba(238, 242, 248, 0.38);
+  color: var(--faint);
   text-wrap: pretty;
+}
+
+/* ------------------------------------------------------------------ *
+ * Onboarding
+ *
+ * A scrim over the live sky, not a screen replacing it -- the sky is
+ * always rendering behind this, dimly through the scrim and fully in the
+ * margin around the card. Themed with the rest of the chrome; the sky it
+ * sits over is not.
+ * ------------------------------------------------------------------ */
+
+.onboard {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: var(--scrim);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+@media (min-width: 560px) {
+  .onboard {
+    align-items: center;
+  }
+}
+
+.onboard-card {
+  position: relative;
+  width: 100%;
+  max-width: var(--shell-max);
+  max-height: 88vh;
+  overflow-y: auto;
+  border-radius: var(--radius-xl);
+  padding: 26px 22px calc(env(safe-area-inset-bottom, 0px) + 22px);
+}
+
+.onboard-skip {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.onboard-dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 22px;
+}
+
+.onboard-dots .dot {
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hair-strong);
+  transition: background 0.2s, width 0.2s;
+}
+
+.onboard-dots .dot[data-active='true'] {
+  width: 28px;
+  background: var(--accent);
+}
+
+/* The step swap: the old step drops out and down slightly, the new one
+   rises in from the same offset -- one motion, reused for every step
+   rather than a different transition per screen. */
+.onboard-step {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.onboard-step[data-leaving='true'] {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.onboard-step[data-entering='true'] {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.onboard h1 {
+  margin: 0;
+  font-size: 27px;
+  line-height: 1.18;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.onboard h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.onboard .lede {
+  margin-top: 10px;
+}
+
+.perms {
+  margin-top: 22px;
+}
+
+.perm {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 15px 0;
+}
+
+.perm + .perm {
+  border-top: 1px solid var(--hair);
+}
+
+.perm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--field);
+  border: 1px solid var(--hair);
+  color: var(--accent);
+}
+
+.perm-text {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.perm-text b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.perm-text span {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--dim);
+  text-wrap: pretty;
+}
+
+.onboard-actions {
+  margin-top: 22px;
 }
 
 .toast {
@@ -800,12 +1007,12 @@ input[type='range']::-moz-range-thumb {
   padding: 0 14px;
   border: 1px solid var(--hair);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--field);
   flex: 0 0 auto;
 }
 
 .searchbar:focus-within {
-  border-color: rgba(233, 169, 59, 0.5);
+  border-color: var(--accent-wash-strong);
 }
 
 .searchbar-icon {
@@ -829,7 +1036,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 .searchbar input::placeholder {
-  color: rgba(238, 242, 248, 0.34);
+  color: var(--faint);
 }
 
 /* Safari draws its own clear button, which collides with the glass styling. */
@@ -844,16 +1051,16 @@ input[type='range']::-moz-range-thumb {
 .cal-status {
   padding: 12px 14px;
   margin-bottom: 14px;
-  border: 1px solid rgba(233, 169, 59, 0.28);
+  border: 1px solid var(--accent-wash-strong);
   border-radius: 12px;
-  background: rgba(233, 169, 59, 0.07);
+  background: var(--accent-wash);
   font-size: 13px;
   line-height: 1.45;
   color: var(--ink);
 }
 
 .item[aria-pressed='true'] {
-  background: rgba(233, 169, 59, 0.1);
+  background: var(--accent-wash);
   border-radius: 12px;
 }
 
@@ -880,32 +1087,36 @@ input[type='range']::-moz-range-thumb {
 
   .iconbtn:hover {
     color: var(--ink);
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--field);
   }
 
   .item:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--field);
     border-radius: 12px;
   }
 
   .primary:hover:not(:disabled) {
-    background: #f2b955;
+    background: var(--accent-hover);
   }
 
   .secondary:hover {
     border-color: var(--hair-strong);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--field);
   }
 
   .switch:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--accent-wash);
   }
 
   .switch[aria-pressed='true']:hover {
     background: var(--accent);
   }
 
+  .segmented-btn:not([aria-pressed='true']):hover {
+    color: var(--ink);
+  }
+
   input[type='range']::-webkit-slider-thumb:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 0 6px rgba(233, 169, 59, 0.16);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 0 6px var(--accent-glow);
   }
 }

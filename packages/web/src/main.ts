@@ -38,6 +38,13 @@ import {
   type Position,
 } from './sensors.js';
 import { startRotationVector } from './native.js';
+import {
+  applyTheme,
+  loadThemePreference,
+  saveThemePreference,
+  watchSystemTheme,
+  type ThemePreference,
+} from './theme.js';
 import { SkyRenderer, type RenderOptions } from './render.js';
 import {
   calibrate,
@@ -111,6 +118,7 @@ type Mode = 'sensors' | 'manual';
 
 class StarGaze {
   private settings = loadSettings();
+  private theme: ThemePreference = loadThemePreference();
   private data!: SkyData;
   private model!: SkyModel;
   private renderer!: SkyRenderer;
@@ -182,7 +190,11 @@ class StarGaze {
 
     this.model = new SkyModel(this.data);
 
+    applyTheme(this.theme);
+    watchSystemTheme(() => this.theme);
+
     this.wireSettings();
+    this.wireTheme();
     this.wireCanvas();
     this.wireNav();
     this.wireKeyboard();
@@ -197,7 +209,6 @@ class StarGaze {
     // The sky is the first thing anyone sees. A full-screen consent wall in
     // front of an app nobody has seen yet is both hostile and unnecessary:
     // drag mode works with no permissions at all, so there is nothing to gate.
-    // Permissions are asked for in the background, the way ordinary apps do.
     this.enterSky();
     this.warnIfInsecureContext();
 
@@ -818,6 +829,31 @@ class StarGaze {
     });
 
     this.wirePermissionRecovery();
+  }
+
+  private wireTheme(): void {
+    const s = this.shell;
+    const buttons: [ThemePreference, HTMLButtonElement][] = [
+      ['light', s.themeLightButton],
+      ['dark', s.themeDarkButton],
+      ['system', s.themeSystemButton],
+    ];
+
+    const sync = (): void => {
+      for (const [choice, button] of buttons) {
+        button.setAttribute('aria-pressed', String(choice === this.theme));
+      }
+    };
+    sync();
+
+    for (const [choice, button] of buttons) {
+      button.addEventListener('click', () => {
+        this.theme = choice;
+        saveThemePreference(choice);
+        applyTheme(choice);
+        sync();
+      });
+    }
   }
 
   /**
