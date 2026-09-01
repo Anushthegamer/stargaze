@@ -22,7 +22,6 @@ export interface RotationVectorReading {
 export interface RotationVectorPlugin {
   isAvailable(): Promise<{ available: boolean }>;
   start(): Promise<void>;
-  stop(): Promise<void>;
   addListener(
     eventName: 'reading',
     listener: (reading: RotationVectorReading) => void,

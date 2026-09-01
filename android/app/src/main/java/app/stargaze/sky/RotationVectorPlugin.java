@@ -52,12 +52,6 @@ public class RotationVectorPlugin extends Plugin implements SensorEventListener 
         call.resolve();
     }
 
-    @PluginMethod
-    public void stop(PluginCall call) {
-        if (sensorManager != null) sensorManager.unregisterListener(this);
-        call.resolve();
-    }
-
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() != Sensor.TYPE_ROTATION_VECTOR) return;
