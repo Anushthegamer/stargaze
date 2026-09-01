@@ -159,15 +159,6 @@ export class OrientationSource {
     return this.receiving ? 'granted' : 'denied';
   }
 
-  stop(): void {
-    if (this.handler) {
-      window.removeEventListener(this.eventName, this.handler as EventListener, true);
-      this.handler = null;
-    }
-    this.listener = null;
-    this.receiving = false;
-  }
-
   private onEvent(event: DeviceOrientationEvent): void {
     const webkitHeading = (event as unknown as { webkitCompassHeading?: number })
       .webkitCompassHeading;
