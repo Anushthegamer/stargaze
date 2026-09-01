@@ -18,5 +18,13 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
+    rollupOptions: {
+      // The Capacitor plugins are imported dynamically and only ever reached
+      // when isNative() is true, which never happens in a browser -- Capacitor
+      // supplies them inside the native shell instead. Leaving them external
+      // keeps them out of the web bundle entirely and, more importantly, stops
+      // the build depending on where a package manager happened to hoist them.
+      external: ['@capacitor/camera', '@capacitor/geolocation'],
+    },
   },
 });
