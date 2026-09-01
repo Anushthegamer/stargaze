@@ -38,6 +38,7 @@ import {
   type Position,
 } from './sensors.js';
 import { startRotationVector } from './native.js';
+import { mountOnboarding } from './onboarding.js';
 import {
   applyTheme,
   loadThemePreference,
@@ -105,6 +106,23 @@ function loadSettings(): Settings {
 function saveSettings(settings: Settings): void {
   try {
     localStorage.setItem('stargaze.settings', JSON.stringify(settings));
+  } catch {
+    /* not worth telling the user about */
+  }
+}
+
+function hasCompletedOnboarding(): boolean {
+  try {
+    return localStorage.getItem('stargaze.onboarded') === 'true';
+  } catch {
+    // Can't remember either way -- better to show it again than never.
+    return false;
+  }
+}
+
+function markOnboardingComplete(): void {
+  try {
+    localStorage.setItem('stargaze.onboarded', 'true');
   } catch {
     /* not worth telling the user about */
   }
@@ -212,20 +230,39 @@ class StarGaze {
     this.enterSky();
     this.warnIfInsecureContext();
 
-    // Ask for everything that can be asked for silently. Where the browser
-    // demands a gesture for orientation, that one request is held back.
-    await this.requestEverything(!motionNeedsGesture());
+    if (hasCompletedOnboarding()) {
+      // Seen it once already -- ask for everything that can be asked for
+      // silently, the way ordinary apps do. Where the browser demands a
+      // gesture for orientation, that one request is held back.
+      await this.requestEverything(!motionNeedsGesture());
 
-    if (!this.usingNativeRotationVector && motionNeedsGesture()) {
-      // Only reached when there is no native sensor and the browser insists
-      // on a gesture -- so ask on the first touch of the sky rather than
-      // behind a wall, and only on devices that genuinely need it.
-      const askOnFirstTouch = (): void => {
-        this.shell.canvas.removeEventListener('pointerdown', askOnFirstTouch);
-        void this.requestEverything(true);
-      };
-      this.shell.canvas.addEventListener('pointerdown', askOnFirstTouch);
+      if (!this.usingNativeRotationVector && motionNeedsGesture()) {
+        // Only reached when there is no native sensor and the browser insists
+        // on a gesture -- so ask on the first touch of the sky rather than
+        // behind a wall, and only on devices that genuinely need it.
+        const askOnFirstTouch = (): void => {
+          this.shell.canvas.removeEventListener('pointerdown', askOnFirstTouch);
+          void this.requestEverything(true);
+        };
+        this.shell.canvas.addEventListener('pointerdown', askOnFirstTouch);
+      }
+      return;
     }
+
+    // First launch: explain before asking, over the sky rather than in
+    // front of it. Tapping "Skip" leaves every permission untouched, same
+    // as if this never ran -- drag mode needs none of them. Tapping the
+    // primary button is itself the gesture the browser demands for
+    // orientation, so requestEverything can ask for motion immediately
+    // rather than waiting for a first touch of the canvas.
+    mountOnboarding(root, {
+      showCamera: primaryPointerIsCoarse(),
+      onEnable: () => {
+        markOnboardingComplete();
+        void this.requestEverything(true);
+      },
+      onSkip: () => markOnboardingComplete(),
+    });
   }
 
   /* ---------------------------------------------------------------- *
